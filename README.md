@@ -17,11 +17,6 @@
 ├── bin/harness-skills.js
 ├── skills.json
 └── catalog/skills/
-    ├── starter-workflow/
-    │   ├── codex/SKILL.md
-    │   └── claude/CLAUDE.md
-    ├── release-checklist/
-    │   └── codex/SKILL.md
     └── mj-live-browse/
         └── codex/
             ├── SKILL.md
@@ -78,12 +73,6 @@ mhs install --all
 
 ```bash
 mhs install mj-live-browse --codex
-```
-
-여러 스킬을 한 번에:
-
-```bash
-mhs install starter-workflow mj-live-browse --codex
 ```
 
 프로젝트 스코프로 설치:
@@ -150,7 +139,6 @@ mhs validate mj-live-browse --codex
 
 ```bash
 HARNESS_CODEX_SKILLS_DIR=/custom/codex/skills mhs install mj-live-browse --codex
-HARNESS_CLAUDE_SKILLS_DIR=/custom/claude/skills mhs install starter-workflow --claude
 HARNESS_PROJECT_SKILLS_DIR=/custom/project-skills mhs install mj-live-browse --project --codex
 ```
 
@@ -181,6 +169,6 @@ catalog/skills/my-skill/
 
 ```bash
 npx @mayajuni/harness install mj-live-browse --codex
-bunx @mayajuni/harness install starter-workflow --codex --claude
+bunx @mayajuni/harness install mj-live-browse --codex
 mhs install mj-live-browse --codex
 ```

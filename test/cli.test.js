@@ -21,16 +21,11 @@ test("list --json returns manifest entries", async () => {
   const { stdout } = await runCli(["list", "--json"]);
   const parsed = JSON.parse(stdout);
   const names = parsed.map((row) => row.name);
-  assert.ok(names.includes("starter-workflow"));
-  assert.ok(names.includes("release-checklist"));
-  assert.ok(names.includes("mj-live-browse"));
+  assert.deepEqual(names, ["mj-live-browse"]);
 });
 
 test("validate exits 0 for the shipped catalog", async () => {
   const { stdout } = await runCli(["validate"]);
-  assert.match(stdout, /OK starter-workflow:codex/);
-  assert.match(stdout, /OK starter-workflow:claude/);
-  assert.match(stdout, /OK release-checklist:codex/);
   assert.match(stdout, /OK mj-live-browse:codex/);
 });
 
