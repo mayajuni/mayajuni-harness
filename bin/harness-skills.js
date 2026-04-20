@@ -632,13 +632,13 @@ async function askInput(prompt) {
 
 function printHelp(exitCode) {
   console.log(`
-harness-skills
+mhs
 
 Commands:
-  harness-skills list [--json]
-  harness-skills install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--copy] [--link] [--dry-run] [--force]
-  harness-skills uninstall [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--dry-run] [--yes]
-  harness-skills validate [skill...] [--codex] [--claude]
+  mhs list [--json]
+  mhs install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--copy] [--link] [--dry-run] [--force]
+  mhs uninstall [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--dry-run] [--yes]
+  mhs validate [skill...] [--codex] [--claude]
 
 Environment:
   HARNESS_CODEX_SKILLS_DIR   Override Codex install root (default: ~/.codex/skills)

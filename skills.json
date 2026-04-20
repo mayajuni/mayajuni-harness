@@ -18,6 +18,14 @@
           "source": "catalog/skills/release-checklist/codex"
         }
       }
+    },
+    "mj-live-browse": {
+      "description": "Chrome Beta CDP 라이브 세션을 이어받아 agent-browser(+ playwright-cli fallback)로 페이지 탐색/DOM 확인/요소 조작을 수행. 한국어 트리거 키워드: 브라우저 확인, 페이지 봐줘, DOM 확인, 클릭해줘, 화면 확인.",
+      "targets": {
+        "codex": {
+          "source": "catalog/skills/mj-live-browse/codex"
+        }
+      }
     }
   }
 }

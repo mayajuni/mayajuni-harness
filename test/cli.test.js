@@ -23,6 +23,7 @@ test("list --json returns manifest entries", async () => {
   const names = parsed.map((row) => row.name);
   assert.ok(names.includes("starter-workflow"));
   assert.ok(names.includes("release-checklist"));
+  assert.ok(names.includes("mj-live-browse"));
 });
 
 test("validate exits 0 for the shipped catalog", async () => {
@@ -30,13 +31,14 @@ test("validate exits 0 for the shipped catalog", async () => {
   assert.match(stdout, /OK starter-workflow:codex/);
   assert.match(stdout, /OK starter-workflow:claude/);
   assert.match(stdout, /OK release-checklist:codex/);
+  assert.match(stdout, /OK mj-live-browse:codex/);
 });
 
 test("install --dry-run reports targets without writing", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
   try {
     const { stdout } = await runCli(
-      ["install", "starter-workflow", "--global", "--codex", "--copy", "--dry-run"],
+      ["install", "mj-live-browse", "--global", "--codex", "--copy", "--dry-run"],
       {
         env: {
           ...process.env,
@@ -44,7 +46,7 @@ test("install --dry-run reports targets without writing", async () => {
         },
       },
     );
-    assert.match(stdout, /\[dry-run\] global copy starter-workflow:codex/);
+    assert.match(stdout, /\[dry-run\] global copy mj-live-browse:codex/);
     assert.deepEqual(fs.readdirSync(tmp), []);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -59,18 +61,23 @@ test("install then uninstall round-trips into a scratch dir", async () => {
   };
   try {
     await runCli(
-      ["install", "starter-workflow", "--global", "--codex", "--copy", "--force"],
+      ["install", "mj-live-browse", "--global", "--codex", "--copy", "--force"],
       { env },
     );
-    const installed = path.join(tmp, "starter-workflow", "SKILL.md");
+    const installed = path.join(tmp, "mj-live-browse", "SKILL.md");
     assert.ok(fs.existsSync(installed), "expected SKILL.md after install");
+    const referencesDir = path.join(tmp, "mj-live-browse", "references");
+    assert.ok(
+      fs.existsSync(referencesDir),
+      "expected references/ to be copied",
+    );
 
     await runCli(
-      ["uninstall", "starter-workflow", "--global", "--codex", "--yes"],
+      ["uninstall", "mj-live-browse", "--global", "--codex", "--yes"],
       { env },
     );
     assert.ok(
-      !fs.existsSync(path.join(tmp, "starter-workflow")),
+      !fs.existsSync(path.join(tmp, "mj-live-browse")),
       "expected skill dir to be removed",
     );
   } finally {
