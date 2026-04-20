@@ -1,0 +1,23 @@
+{
+  "skills": {
+    "starter-workflow": {
+      "description": "Starter skill bundle with separate Codex and Claude payloads.",
+      "targets": {
+        "codex": {
+          "source": "catalog/skills/starter-workflow/codex"
+        },
+        "claude": {
+          "source": "catalog/skills/starter-workflow/claude"
+        }
+      }
+    },
+    "release-checklist": {
+      "description": "Example of a skill that can be installed only for Codex.",
+      "targets": {
+        "codex": {
+          "source": "catalog/skills/release-checklist/codex"
+        }
+      }
+    }
+  }
+}

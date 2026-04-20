@@ -1,0 +1,27 @@
+{
+  "name": "harness-skills",
+  "version": "0.1.0",
+  "description": "Manifest-driven skill catalog and installer for Codex and Claude.",
+  "type": "module",
+  "bin": {
+    "harness-skills": "./bin/harness-skills.js"
+  },
+  "files": [
+    "bin",
+    "catalog",
+    "skills.json",
+    "README.md"
+  ],
+  "scripts": {
+    "list": "node ./bin/harness-skills.js list",
+    "check": "node ./bin/harness-skills.js validate",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "skills",
+    "codex",
+    "claude",
+    "installer"
+  ],
+  "license": "MIT"
+}
