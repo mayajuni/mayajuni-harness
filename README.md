@@ -1,8 +1,8 @@
 # mayajuni-harness
 
-`@mayajuni/harness`는 여러 스킬을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다.
+`@mayajuni/harness`는 여러 스킬을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`는 `codex`, `claude` 2타깃을 지원합니다.
 
-기본 사용은 질문형 CLI입니다. 옵션을 생략하면 `scope`, `skills`, `tools`, `install mode`를 순서대로 물어봅니다.
+기본 사용은 질문형 CLI입니다. 옵션을 생략하면 `scope`, `skills`, `tools`를 순서대로 물어봅니다.
 
 ## 이름
 
@@ -18,10 +18,11 @@
 ├── skills.json
 └── catalog/skills/
     └── mj-live-browse/
-        └── codex/
-            ├── SKILL.md
-            └── references/
+        ├── SKILL.md
+        └── references/
 ```
+
+`mj-live-browse`는 하나의 source를 두고, Codex와 Claude Code가 그 내용을 함께 사용합니다. 두 타깃 모두 같은 `SKILL.md`와 `references/`를 설치합니다.
 
 ## 기본 사용
 
@@ -73,18 +74,13 @@ mhs install --all
 
 ```bash
 mhs install mj-live-browse --codex
+mhs install mj-live-browse --claude
 ```
 
 프로젝트 스코프로 설치:
 
 ```bash
 mhs install --scope=project
-```
-
-개발 중인 스킬을 링크 설치:
-
-```bash
-mhs install mj-live-browse --codex --link --force
 ```
 
 설치 삭제:
@@ -101,67 +97,66 @@ mhs uninstall --all --project --yes
 1. `global`인지 `project`인지
 2. 설치할 스킬이 무엇인지, 혹은 `all`인지
 3. 대상 툴이 무엇인지, 혹은 `all`인지
-4. 복사 설치인지 링크 설치인지
 
 `mhs uninstall`도 같은 방식으로 `scope`, `skills`, `tools`를 묻고 마지막에 삭제 확인을 받습니다. 자동화가 필요하면 `--yes`를 쓸 수 있습니다.
 
-스킬과 툴은 멀티 선택이 가능합니다. 자동화할 때만 `--all`, `--scope`, `--codex`, `--claude`, `--link` 같은 옵션을 쓰면 됩니다.
+스킬과 툴은 멀티 선택이 가능합니다. 자동화할 때는 `--all`, `--scope`, `--codex`, `--claude` 같은 옵션을 쓰면 됩니다.
 
 ## 권장 워크플로
 
-개발 중에는 `link`, 배포 전에는 `copy + validate`를 권장합니다.
+설치는 항상 복사 설치입니다. 개발 중에도 설치 결과를 실제 로딩 경로에서 확인하고, source를 수정한 뒤 다시 `install --force`로 덮어쓰는 흐름을 권장합니다.
 
 1. `catalog/skills/...` 아래에서 스킬을 만든다.
-2. `mhs install ... --link`로 실제 사용 위치에 연결한다.
+2. `mhs install ... --force`로 실제 사용 위치에 복사 설치한다.
 3. Codex나 Claude에서 직접 사용해본다.
-4. 원본 스킬을 수정한다.
+4. source 스킬을 수정한다.
 5. `mhs validate`로 엔트리 파일과 구조를 확인한다.
-6. 배포 전에는 일반 `install`로 복사 설치해 최종 상태를 확인한다.
+6. 다시 `mhs install ... --force`로 설치본을 갱신한다.
 
 예시:
 
 ```bash
-mhs install mj-live-browse --codex --link --force
+mhs install mj-live-browse --codex --force
 mhs validate mj-live-browse --codex
 ```
-
-`--link`를 쓰면 설치 대상이 원본 폴더를 가리키므로, `catalog/skills/...`를 수정한 내용이 바로 반영됩니다.
 
 ## 설치 경로
 
 - Codex global: `~/.codex/skills`
 - Claude global: `~/.claude/skills`
-- Project scope: `./.harness/skills/<tool>`
+- Codex project: `./.agents/skills`
+- Claude project: `./.claude/skills`
 
-`project` scope는 프로젝트 내부 설치 위치를 관리하기 위한 경로입니다. 실제 Codex/Claude가 이 경로를 자동으로 읽는지는 도구 설정에 따라 다를 수 있으니, 바로 사용되는 경로가 필요하면 `global` scope가 더 확실합니다.
+`project` scope는 각 도구가 실제로 읽는 기본 프로젝트 경로에 맞춰 설치합니다. 더 이상 `./.harness/skills/<tool>` 같은 별도 관리 경로를 기본값으로 쓰지 않습니다.
+
+주의:
+
+- Codex는 개인 설치에 `~/.codex/skills`를 주로 사용하지만, 프로젝트 스킬은 `./.agents/skills`에 맞춰 설치합니다.
+- Claude Code는 공식 스킬 엔트리인 `SKILL.md`를 사용하며, 프로젝트 스킬은 `./.claude/skills`에 설치합니다.
 
 환경 변수로 override 가능합니다.
 
 ```bash
 HARNESS_CODEX_SKILLS_DIR=/custom/codex/skills mhs install mj-live-browse --codex
-HARNESS_PROJECT_SKILLS_DIR=/custom/project-skills mhs install mj-live-browse --project --codex
+HARNESS_CLAUDE_SKILLS_DIR=/custom/claude/skills mhs install mj-live-browse --claude
+HARNESS_PROJECT_SKILLS_DIR=/custom/project-skills-root mhs install mj-live-browse --project --codex
 ```
+
+`HARNESS_PROJECT_SKILLS_DIR`를 지정하면 위 네이티브 기본 경로 대신 해당 경로를 project install root로 강제합니다. 기본 동작은 네이티브 경로를 쓰는 것입니다.
 
 ## 스킬 추가
 
-새 스킬을 추가하려면 `catalog/skills/<skill-name>/<target>/...`를 만들고 `skills.json`에 등록하면 됩니다.
+새 스킬을 추가하려면 `catalog/skills/<skill-name>/...`를 만들고 `skills.json`에 등록하면 됩니다.
 
-예 (Codex 전용):
-
-```text
-catalog/skills/my-skill/
-└── codex/
-    ├── SKILL.md
-    └── references/
-```
-
-Codex와 Claude 양쪽을 지원하려면:
+기본 구조:
 
 ```text
 catalog/skills/my-skill/
-├── codex/SKILL.md
-└── claude/CLAUDE.md
+├── SKILL.md
+└── references/
 ```
+
+Codex와 Claude Code가 같은 Agent Skills 형식을 쓰기 때문에 `skills.json`에서 두 타깃이 같은 source를 가리키게 두는 편이 낫습니다. 현재 `mj-live-browse`도 그 방식으로 구성돼 있습니다. 현재 각 타깃의 엔트리 파일은 `SKILL.md`입니다.
 
 ## 배포 후 실행
 
@@ -169,6 +164,5 @@ catalog/skills/my-skill/
 
 ```bash
 npx @mayajuni/harness install mj-live-browse --codex
-bunx @mayajuni/harness install mj-live-browse --codex
-mhs install mj-live-browse --codex
+bunx @mayajuni/harness install mj-live-browse --claude
 ```

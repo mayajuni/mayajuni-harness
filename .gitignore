@@ -1,5 +1,7 @@
 node_modules/
 .harness/skills/
+.agents/skills/
+.claude/skills/
 
 npm-debug.log*
 yarn-debug.log*

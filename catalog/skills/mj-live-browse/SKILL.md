@@ -3,8 +3,8 @@ name: mj-live-browse
 description: |
   agent-browser CLI로 Chrome Beta CDP에 연결하여 페이지 탐색, 데이터 확인, 요소 조작을 수행하는 스킬.
   "브라우저 확인", "페이지 봐줘", "DOM 확인", "데이터 점검", "클릭해줘", "화면 확인" 키워드로 트리거.
-  E2E 시나리오 작성 중 셀렉터 확인이나 실행 실패 디버깅에도 사용한다.
-  e2e/ 폴더 없이도 단독 실행 가능.
+  라이브 세션 탐색, 셀렉터 확인, 실행 실패 디버깅에 사용한다.
+  별도 프로젝트 래퍼 없이 단독 실행 가능.
 ---
 
 > 원본: [peach-harness/peach-e2e-browse](https://github.com/peachSolution/peach-harness/tree/main/skills/peach-e2e-browse)
@@ -15,7 +15,7 @@ description: |
 `agent-browser`(기본) + `playwright-cli`(fallback)로 Chrome Beta를 제어한다.
 사람이 Chrome Beta 고정 프로필에서 로그인을 완료한 브라우저를 AI가 이어받아 탐색한다.
 
-> **단독 실행 가능**: e2e/ 폴더나 `./e2e.sh setup`이 없어도 agent-browser만 설치되어 있으면 핵심 기능(탐색/검증/확인)이 동작한다.
+> **단독 실행 가능**: 별도 프로젝트 래퍼나 setup 스크립트가 없어도 agent-browser만 설치되어 있으면 핵심 기능(탐색/검증/확인)이 동작한다.
 
 ## 강제 게이트
 
@@ -38,7 +38,6 @@ description: |
 | 용도 | 도구 | 이유 |
 |------|------|------|
 | **탐색/검증/확인** | **agent-browser** | eval 6.6x 빠름, 토큰 2.3x 절약 |
-| **시나리오 실행** | playwright-cli (`./e2e.sh run`) | lib/connect.js 기반 시나리오 인프라 |
 | **fallback** | playwright-cli (직접 호출) | iframe 등 agent-browser 미지원 기능 |
 
 ## 의사결정 트리 (최우선 확인)
@@ -103,7 +102,7 @@ description: |
 ## 워크플로우
 
 ```
-1. 환경 확인 (인라인 체크 — e2e/ 폴더 불필요)
+1. 환경 확인 (인라인 체크)
 2. CDP 연결 (agent-browser connect 9222)
 3. tab list → 사용자에게 탭 목록 보여주고 작업 탭 확인
 4. 선택된 탭에서 작업 (eval/click/snapshot)
@@ -120,7 +119,7 @@ description: |
 
 ### 1단계: 환경 확인 (단독 실행)
 
-e2e/ 폴더나 setup 스크립트 없이 직접 확인한다:
+별도 프로젝트 래퍼 없이 직접 확인한다:
 
 ```bash
 # a) agent-browser 설치 여부
@@ -159,8 +158,6 @@ curl -s "http://127.0.0.1:9222/json/version"
   --user-data-dir="$(cygpath -w "$HOME/.chrome-beta-e2e-profile")" \
   --disable-extensions &
 ```
-
-> e2e/ 폴더가 있다면 `cd e2e && ./e2e.sh chrome`으로도 실행 가능.
 
 ### 2단계: CDP 연결
 
@@ -313,7 +310,7 @@ agent-browser가 지원하지 못하는 경우 playwright-cli로 전환한다.
 - iframe 내부 요소 접근 (jQuery UI Dialog + iframe 모달)
 - agent-browser snapshot에 iframe 태그만 보이고 내부가 비어있을 때
 
-### 사전 확인 (e2e/ 폴더 불필요)
+### 사전 확인
 
 ```bash
 # playwright-cli 설치 확인
@@ -331,7 +328,7 @@ fi
 
 ### 직접 호출 방법
 
-e2e/ 폴더의 `pwc.sh` 래퍼 없이 직접 호출한다:
+playwright-cli를 직접 호출한다:
 
 ```bash
 # playwright-cli 세션 오픈 (1회)
@@ -348,7 +345,6 @@ playwright-cli --config="$HOME/.playwright/cli.config.json" eval "document.query
 playwright-cli --config="$HOME/.playwright/cli.config.json" eval "document.querySelector('iframe[src*=대상]').contentDocument.querySelector('input[type=submit]').click()"
 ```
 
-> e2e/ 폴더가 있다면 `./e2e/pwc.sh` 래퍼를 사용해도 동일하다.
 > 상세 패턴은 `references/iframe-모달-패턴.md` 참조
 
 ## 실측 비교 데이터
@@ -380,26 +376,22 @@ playwright-cli --config="$HOME/.playwright/cli.config.json" eval "document.query
 14. **수동 native dialog 검증 전 CDP 상주 세션 점검** -- `agent-browser` daemon이 붙어 있으면 `alert/confirm`이 즉시 닫힐 수 있다. 새 탭/새로고침보다 `lsof → ps → kill`이 우선이다. (references/native-dialog-주의사항.md)
 15. **dialog를 가로챈 시나리오는 반드시 원복** -- `window.alert/confirm` override, 전역 dialog listener, 강제 dismiss 코드는 `finally`에서 해제한다. (references/native-dialog-주의사항.md)
 16. **외부 서비스 전환은 fallback 필수** -- `click()` 한 줄이 아니라 `load + 지연 + 직접 이동 fallback` 패턴 사용. (references/외부서비스-링크전환-패턴.md)
-17. **디버깅/재현은 `E2E_TAB_ID` 우선** -- `--tab N` 인덱스는 흔들릴 수 있다. 특정 URL 탭 재현은 `targetId` 고정이 안전하다. (references/탭-선택-패턴.md)
-18. **탭 번호 확인 전 조작 금지** -- `tab list`는 필수 게이트다. 사용자 탭 선택 전에는 `open/tab/eval/click/fill/press` 실행 금지.
-19. **로그인/프로필 민감 작업은 분석 우선** -- Google/OAuth/관리자/결제/기존 세션 유지 페이지는 분석만 수행하고 실행은 사용자 확인 후 진행.
-20. **OS 레벨 브라우저 우회 금지** -- `agent-browser` 실패 시 `open -a`, 다른 브라우저 호출, 프로필 무시 실행 금지. 보고 후 대기. (references/고정프로필-강제게이트-패턴.md)
-21. **인증은 사용자, 세션 활용은 AI** -- 로그인/2차 인증/보안 확인은 사용자가 Chrome Beta 고정 프로필에서 직접 수행하고, AI는 완료된 세션만 이어받아 작업한다. (references/고정프로필-강제게이트-패턴.md)
-22. **Angular/React fill 실패 → 이벤트 발행 추가** -- fill 후 버튼이 [disabled]이면 `eval dispatchEvent(new Event('input', {bubbles:true}))`를 반드시 시도한다. 여전히 안 되면 change 이벤트도 발행. (references/SPA-프레임워크-입력패턴.md)
-23. **tab N 직후 title 재확인** -- tab list → 사용자 응답 → tab N 후 반드시 `eval "document.title + ' | ' + location.href"`로 탭이 맞는지 검증한다. 예상과 다르면 tab list 재출력 후 재선택.
-24. **OS 파일 다이얼로그는 인터셉트로 차단** -- CDP Escape 키 이벤트와 `agent-browser press Escape` 모두 macOS 네이티브 파일 다이얼로그(XPC 서비스)에는 무효다. `Page.setInterceptFileChooserDialog(enabled:true)` → `agent-browser click` → `Page.fileChooserOpened` → `setFileInputFiles(backendNodeId)` 순서로 OS 다이얼로그 자체를 차단한다. (references/SPA-프레임워크-입력패턴.md §3)
+17. **탭 번호 확인 전 조작 금지** -- `tab list`는 필수 게이트다. 사용자 탭 선택 전에는 `open/tab/eval/click/fill/press` 실행 금지.
+18. **로그인/프로필 민감 작업은 분석 우선** -- Google/OAuth/관리자/결제/기존 세션 유지 페이지는 분석만 수행하고 실행은 사용자 확인 후 진행.
+19. **OS 레벨 브라우저 우회 금지** -- `agent-browser` 실패 시 `open -a`, 다른 브라우저 호출, 프로필 무시 실행 금지. 보고 후 대기. (references/고정프로필-강제게이트-패턴.md)
+20. **인증은 사용자, 세션 활용은 AI** -- 로그인/2차 인증/보안 확인은 사용자가 Chrome Beta 고정 프로필에서 직접 수행하고, AI는 완료된 세션만 이어받아 작업한다. (references/고정프로필-강제게이트-패턴.md)
+21. **Angular/React fill 실패 → 이벤트 발행 추가** -- fill 후 버튼이 [disabled]이면 `eval dispatchEvent(new Event('input', {bubbles:true}))`를 반드시 시도한다. 여전히 안 되면 change 이벤트도 발행. (references/SPA-프레임워크-입력패턴.md)
+22. **tab N 직후 title 재확인** -- tab list → 사용자 응답 → tab N 후 반드시 `eval "document.title + ' | ' + location.href"`로 탭이 맞는지 검증한다. 예상과 다르면 tab list 재출력 후 재선택.
+23. **OS 파일 다이얼로그는 인터셉트로 차단** -- CDP Escape 키 이벤트와 `agent-browser press Escape` 모두 macOS 네이티브 파일 다이얼로그(XPC 서비스)에는 무효다. `Page.setInterceptFileChooserDialog(enabled:true)` → `agent-browser click` → `Page.fileChooserOpened` → `setFileInputFiles(backendNodeId)` 순서로 OS 다이얼로그 자체를 차단한다. (references/SPA-프레임워크-입력패턴.md §3)
 
 ## 참조 문서
 
 | 문서 | 용도 |
 |------|------|
-| `references/agent-browser-명령어.md` | agent-browser 전체 명령어 레퍼런스 |
-| `references/playwright-cli-명령어.md` | fallback 전용 (iframe 등 agent-browser 미지원 시) |
 | `references/iframe-모달-패턴.md` | jQuery UI Dialog + iframe 모달 접근 패턴 |
 | `references/Flutter-웹앱-패턴.md` | Flutter 웹앱 판별 / accessibility / API 직접 호출 |
 | `references/토큰-최적화-실측데이터.md` | 명령별 토큰 비용 실측 비교표 + 예산 가이드 |
 | `references/native-dialog-주의사항.md` | CDP 상주 세션의 native dialog 자동 dismiss 문제 + 점검 절차 |
 | `references/외부서비스-링크전환-패턴.md` | 외부 서비스 링크 전환 시 fallback 패턴 |
-| `references/탭-선택-패턴.md` | `--tab N` vs `E2E_TAB_ID` 선택 기준 |
 | `references/SPA-프레임워크-입력패턴.md` | Angular/React controlled input 이벤트 발행, 숨겨진 file input TreeWalker 탐색, CDP Input.insertText |
 | `references/고정프로필-강제게이트-패턴.md` | 민감 세션/고정 프로필 작업의 중단 조건과 우회 금지 규칙 |

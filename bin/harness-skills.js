@@ -13,12 +13,14 @@ const TARGETS = {
   codex: {
     env: "HARNESS_CODEX_SKILLS_DIR",
     defaultDir: "~/.codex/skills",
+    projectDir: ".agents/skills",
     entryFile: "SKILL.md",
   },
   claude: {
     env: "HARNESS_CLAUDE_SKILLS_DIR",
     defaultDir: "~/.claude/skills",
-    entryFile: "CLAUDE.md",
+    projectDir: ".claude/skills",
+    entryFile: "SKILL.md",
   },
 };
 
@@ -86,12 +88,10 @@ function runList(args) {
 
 async function runInstall(args) {
   const options = parseFlags(args);
+  assertNoLegacyInstallModeFlags(options.flags);
   const manifest = loadManifest();
-  const selection = await resolveSelection(manifest, options, {
-    includeInstallMode: true,
-  });
-  const { selectedSkillNames, selectedTargets, installMode, scopeName } =
-    selection;
+  const selection = await resolveSelection(manifest, options);
+  const { selectedSkillNames, selectedTargets, scopeName } = selection;
 
   for (const skillName of selectedSkillNames) {
     const skill = manifest.skills[skillName];
@@ -117,7 +117,7 @@ async function runInstall(args) {
 
       if (options.flags["dry-run"]) {
         console.log(
-          `[dry-run] ${scopeName} ${installMode} ${skillName}:${targetName} -> ${installDir}`,
+          `[dry-run] ${scopeName} ${skillName}:${targetName} -> ${installDir}`,
         );
         continue;
       }
@@ -138,14 +138,10 @@ async function runInstall(args) {
         fs.rmSync(installDir, { recursive: true, force: true });
       }
 
-      if (installMode === "link") {
-        linkDirectory(sourceDir, installDir);
-      } else {
-        copyDirectory(sourceDir, installDir);
-      }
+      copyDirectory(sourceDir, installDir);
 
       console.log(
-        `Installed ${skillName}:${targetName} [${scopeName}, ${installMode}] -> ${installDir}`,
+        `Installed ${skillName}:${targetName} [${scopeName}] -> ${installDir}`,
       );
     }
   }
@@ -154,9 +150,7 @@ async function runInstall(args) {
 async function runUninstall(args) {
   const options = parseFlags(args);
   const manifest = loadManifest();
-  const selection = await resolveSelection(manifest, options, {
-    includeInstallMode: false,
-  });
+  const selection = await resolveSelection(manifest, options);
   const { selectedSkillNames, selectedTargets, scopeName } = selection;
   const targetsToRemove = [];
 
@@ -223,7 +217,7 @@ async function runUninstall(args) {
   }
 }
 
-async function resolveSelection(manifest, options, config) {
+async function resolveSelection(manifest, options) {
   const requestedSkills = options.positionals;
   const interactive = canPrompt();
   const scopeName = await resolveScopeName(options.flags, interactive);
@@ -252,10 +246,7 @@ async function resolveSelection(manifest, options, config) {
     selectedTargets = collectTargetsForSkills(manifest, selectedSkillNames);
   }
 
-  const installMode = config.includeInstallMode
-    ? await resolveInstallMode(options.flags, interactive)
-    : null;
-  return { selectedSkillNames, selectedTargets, installMode, scopeName };
+  return { selectedSkillNames, selectedTargets, scopeName };
 }
 
 async function resolveScopeName(flags, interactive) {
@@ -269,22 +260,6 @@ async function resolveScopeName(flags, interactive) {
   }
 
   return await promptForScope();
-}
-
-async function resolveInstallMode(flags, interactive) {
-  if (flags.link) {
-    return "link";
-  }
-
-  if (flags.copy) {
-    return "copy";
-  }
-
-  if (!interactive) {
-    return "copy";
-  }
-
-  return await promptForInstallMode();
 }
 
 function runValidate(args) {
@@ -343,6 +318,14 @@ function runValidate(args) {
 
   if (hasError) {
     process.exitCode = 1;
+  }
+}
+
+function assertNoLegacyInstallModeFlags(flags) {
+  if (flags.link || flags.copy) {
+    throw new Error(
+      "Install mode flags are no longer supported. Installs always copy files.",
+    );
   }
 }
 
@@ -416,9 +399,16 @@ function resolveTargetRoot(targetName, scopeName) {
 
   if (scopeName === "project") {
     const scope = SCOPES.project;
-    const configured = process.env[scope.env] || scope.defaultDir;
-    const projectBase = resolveProjectPath(configured);
-    return path.join(projectBase, targetName);
+    const configured = process.env[scope.env];
+    if (configured) {
+      return resolveProjectPath(configured);
+    }
+
+    if (target.projectDir) {
+      return resolveProjectPath(target.projectDir);
+    }
+
+    return path.join(resolveProjectPath(scope.defaultDir), targetName);
   }
 
   throw new Error(`Unsupported scope: ${scopeName}`);
@@ -451,14 +441,6 @@ function copyDirectory(sourceDir, targetDir) {
   }
 
   fs.cpSync(sourceDir, targetDir, { recursive: true });
-}
-
-function linkDirectory(sourceDir, targetDir) {
-  if (!fs.existsSync(sourceDir)) {
-    throw new Error(`Missing source directory: ${sourceDir}`);
-  }
-
-  fs.symlinkSync(sourceDir, targetDir, "dir");
 }
 
 function assertValidTargetSource(sourceDir, targetName) {
@@ -546,19 +528,9 @@ async function promptForScope() {
         value: "global",
       },
       {
-        label: "Project scope (./.harness/skills/<tool>)",
+        label: "Project scope (Codex: ./.agents/skills, Claude: ./.claude/skills)",
         value: "project",
       },
-    ],
-  );
-}
-
-async function promptForInstallMode() {
-  return await askChoice(
-    "How should the skill be installed?",
-    [
-      { label: "Copy files", value: "copy" },
-      { label: "Link to source for live editing", value: "link" },
     ],
   );
 }
@@ -636,14 +608,14 @@ mhs
 
 Commands:
   mhs list [--json]
-  mhs install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--copy] [--link] [--dry-run] [--force]
+  mhs install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--dry-run] [--force]
   mhs uninstall [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--dry-run] [--yes]
   mhs validate [skill...] [--codex] [--claude]
 
 Environment:
   HARNESS_CODEX_SKILLS_DIR   Override Codex install root (default: ~/.codex/skills)
   HARNESS_CLAUDE_SKILLS_DIR  Override Claude install root (default: ~/.claude/skills)
-  HARNESS_PROJECT_SKILLS_DIR Override project install root (default: ./.harness/skills)
+  HARNESS_PROJECT_SKILLS_DIR Override project install root (default: native project paths)
 `);
   process.exitCode = exitCode;
 }

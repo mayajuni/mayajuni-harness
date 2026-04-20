@@ -23,5 +23,8 @@
     "claude",
     "installer"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }
