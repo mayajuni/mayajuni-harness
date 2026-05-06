@@ -1,6 +1,6 @@
 # Flutter 웹앱 패턴
 
-Flutter 웹앱(Canvas 렌더링)을 agent-browser로 탐색할 때의 패턴.
+Flutter 웹앱(Canvas 렌더링)을 agent-browser로 제어할 때의 패턴.
 일반 HTML과 완전히 다르므로 이 문서를 먼저 확인한다.
 
 ## 1. Flutter 판별법
@@ -45,7 +45,7 @@ agent-browser click e2
 ## 3. API 직접 호출 (핵심 우회 전략)
 
 **Flutter 사이트에서 가장 효율적이고 안정적인 방법.**
-UI 탐색 대비 토큰 99% 절약.
+UI 조작 대비 토큰 99% 절약.
 
 ### 단계 1: API 엔드포인트 발견
 

@@ -18,7 +18,7 @@ monkey-patch가 실행될 기회 자체가 없다. **사용 금지.**
 이 daemon은 Playwright 계열 CDP 클라이언트로, 브라우저의 native `alert/confirm/prompt`를
 handler 없이 자동으로 dismiss(false)한다.
 
-사용자가 직접 dialog를 확인하거나 시나리오에서 dialog를 처리해야 하는 경우,
+사용자가 직접 dialog를 확인하거나 실제 작업 흐름에서 dialog를 처리해야 하는 경우,
 이 daemon이 붙어 있으면 dialog가 보이기도 전에 닫혀버린다.
 
 ### daemon 확인 및 종료
@@ -46,7 +46,7 @@ lsof -iTCP:9222 -sTCP:ESTABLISHED -n -P
 
 ## 문제 2: 다중 CDP 세션 race condition
 
-agent-browser daemon + E2E 스크립트가 동시에 CDP에 붙으면,
+agent-browser daemon + CDP 제어 스크립트가 동시에 CDP에 붙으면,
 CDP `Page.javascriptDialogOpening` 이벤트가 **모든 세션에 브로드캐스트**된다.
 먼저 도달한 세션이 `Page.handleJavaScriptDialog`를 처리하고,
 나머지 세션이 시도하면 `ProtocolError: No dialog is showing` 에러가 발생한다.

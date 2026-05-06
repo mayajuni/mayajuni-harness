@@ -255,23 +255,23 @@ await cdpSession.send('Input.insertText', { text: '입력할 텍스트' });
 
 ---
 
-## 5. tab list 후 탭 번호 변경 감지
+## 5. tab list 후 탭 선택 변경 감지
 
 ### 원인
 
-사용자가 탭 번호를 응답하는 사이(수 초~수십 초) Chrome에서 탭이 닫히거나
-페이지가 새로고침 되면 번호가 달라짐.
+자동 선택 또는 사용자 탭 지정 이후 Chrome에서 탭이 닫히거나 페이지가 새로고침 되면
+선택한 탭의 대상이 달라질 수 있음.
 
 ### 해결 — tab N 직후 title 재확인 필수
 
 ```bash
-# 1. 사용자가 "2번 탭"이라고 응답한 뒤
+# 1. 자동 선택 또는 사용자가 "2번 탭"이라고 응답한 뒤
 agent-browser tab 2
 
 # 2. 즉시 재확인 (탭이 바뀌지 않았는지)
 agent-browser eval "document.title + ' | ' + location.href"
 
-# 3. 예상한 사이트가 아니면 tab list 다시 출력 후 재선택
+# 3. 예상한 사이트가 아니면 tab list 다시 출력 후 자동 선택 또는 재확인
 agent-browser tab list
 ```
 

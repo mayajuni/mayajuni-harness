@@ -1,7 +1,7 @@
 {
   "skills": {
     "mj-live-browse": {
-      "description": "Chrome Beta CDP 라이브 세션을 이어받아 agent-browser(+ playwright-cli fallback)로 페이지 탐색/DOM 확인/요소 조작을 수행. 한국어 트리거 키워드: 브라우저 확인, 페이지 봐줘, DOM 확인, 클릭해줘, 화면 확인.",
+      "description": "Chrome Beta CDP 라이브 세션을 이어받아 agent-browser(+ playwright-cli fallback)로 실제 브라우저에서 웹 작업을 수행. 한국어 트리거 키워드: 브라우저로 해줘, 사이트에서 처리해줘, 클릭해줘, 입력해줘, 업로드해줘, 페이지 봐줘.",
       "targets": {
         "codex": {
           "source": "catalog/skills/mj-live-browse"
