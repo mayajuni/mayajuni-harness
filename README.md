@@ -1,6 +1,6 @@
 # mayajuni-harness
 
-`@mayajuni/harness`는 여러 스킬을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`는 `codex`, `claude` 2타깃을 지원합니다.
+`@mayajuni/harness`는 여러 스킬을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`, `video-highlight`는 `codex`, `claude` 2타깃을 지원합니다.
 
 기본 사용은 질문형 CLI입니다. 옵션을 생략하면 `scope`, `skills`, `tools`를 순서대로 물어봅니다.
 
@@ -17,12 +17,15 @@
 ├── bin/harness-skills.js
 ├── skills.json
 └── catalog/skills/
-    └── mj-live-browse/
+    ├── mj-live-browse/
+    │   ├── SKILL.md
+    │   └── references/
+    └── video-highlight/
         ├── SKILL.md
-        └── references/
+        └── scripts/
 ```
 
-`mj-live-browse`는 하나의 source를 두고, Codex와 Claude Code가 그 내용을 함께 사용합니다. 두 타깃 모두 같은 `SKILL.md`와 `references/`를 설치합니다.
+각 스킬은 하나의 source를 두고, Codex와 Claude Code가 그 내용을 함께 사용합니다. 두 타깃 모두 같은 `SKILL.md`와 관련 보조 파일(`references/`, `scripts/` 등)을 설치합니다.
 
 ## 기본 사용
 
@@ -75,6 +78,7 @@ mhs install --all
 ```bash
 mhs install mj-live-browse --codex
 mhs install mj-live-browse --claude
+mhs install video-highlight --codex
 ```
 
 프로젝트 스코프로 설치:
@@ -156,7 +160,7 @@ catalog/skills/my-skill/
 └── references/
 ```
 
-Codex와 Claude Code가 같은 Agent Skills 형식을 쓰기 때문에 `skills.json`에서 두 타깃이 같은 source를 가리키게 두는 편이 낫습니다. 현재 `mj-live-browse`도 그 방식으로 구성돼 있습니다. 현재 각 타깃의 엔트리 파일은 `SKILL.md`입니다.
+Codex와 Claude Code가 같은 Agent Skills 형식을 쓰기 때문에 `skills.json`에서 두 타깃이 같은 source를 가리키게 두는 편이 낫습니다. 현재 등록된 스킬도 그 방식으로 구성돼 있습니다. 현재 각 타깃의 엔트리 파일은 `SKILL.md`입니다.
 
 ## 배포 후 실행
 
@@ -165,4 +169,5 @@ Codex와 Claude Code가 같은 Agent Skills 형식을 쓰기 때문에 `skills.j
 ```bash
 npx @mayajuni/harness install mj-live-browse --codex
 bunx @mayajuni/harness install mj-live-browse --claude
+npx @mayajuni/harness install video-highlight --codex
 ```

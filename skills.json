@@ -10,6 +10,17 @@
           "source": "catalog/skills/mj-live-browse"
         }
       }
+    },
+    "video-highlight": {
+      "description": "많은 개인 여행/추억 영상을 분석해 좋은 장면을 고르고, 위치/기간 타이틀, 자연스러운 전환, 원음 유지, 은은한 BGM, 선택적 STT 자막까지 포함한 하나의 하이라이트 MP4를 만든다.",
+      "targets": {
+        "codex": {
+          "source": "catalog/skills/video-highlight"
+        },
+        "claude": {
+          "source": "catalog/skills/video-highlight"
+        }
+      }
     }
   }
 }

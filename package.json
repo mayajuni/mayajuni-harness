@@ -4,7 +4,7 @@
   "description": "Manifest-driven skill catalog and installer for Codex and Claude.",
   "type": "module",
   "bin": {
-    "mhs": "./bin/harness-skills.js"
+    "mhs": "bin/harness-skills.js"
   },
   "files": [
     "bin",

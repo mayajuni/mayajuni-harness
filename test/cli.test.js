@@ -21,13 +21,15 @@ test("list --json returns manifest entries", async () => {
   const { stdout } = await runCli(["list", "--json"]);
   const parsed = JSON.parse(stdout);
   const names = parsed.map((row) => row.name);
-  assert.deepEqual(names, ["mj-live-browse"]);
+  assert.deepEqual(names, ["mj-live-browse", "video-highlight"]);
 });
 
 test("validate exits 0 for the shipped catalog", async () => {
   const { stdout } = await runCli(["validate"]);
   assert.match(stdout, /OK mj-live-browse:codex/);
   assert.match(stdout, /OK mj-live-browse:claude/);
+  assert.match(stdout, /OK video-highlight:codex/);
+  assert.match(stdout, /OK video-highlight:claude/);
 });
 
 test("install --dry-run reports targets without writing", async () => {
@@ -98,6 +100,34 @@ test("claude target installs the SKILL.md payload", async () => {
     assert.ok(
       fs.existsSync(referencesDir),
       "expected shared references/ to be copied for claude",
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("video-highlight installs its helper scripts", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  const env = {
+    ...process.env,
+    HARNESS_CODEX_SKILLS_DIR: tmp,
+  };
+  try {
+    await runCli(
+      ["install", "video-highlight", "--global", "--codex", "--force"],
+      { env },
+    );
+    const installed = path.join(tmp, "video-highlight", "SKILL.md");
+    assert.ok(fs.existsSync(installed), "expected SKILL.md after install");
+    const createScript = path.join(
+      tmp,
+      "video-highlight",
+      "scripts",
+      "create_highlight.py",
+    );
+    assert.ok(
+      fs.existsSync(createScript),
+      "expected create_highlight.py to be copied",
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
