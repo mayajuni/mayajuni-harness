@@ -21,6 +21,17 @@
           "source": "catalog/skills/video-highlight"
         }
       }
+    },
+    "media-highlight": {
+      "description": "사진과 동영상이 섞인 개인 미디어 폴더를 전수 분석해 좋은 사진과 영상 장면을 고르고, 자연스러운 전환/원음/BGM/선택적 STT 자막을 포함한 하나의 하이라이트 MP4를 만든다.",
+      "targets": {
+        "codex": {
+          "source": "catalog/skills/media-highlight"
+        },
+        "claude": {
+          "source": "catalog/skills/media-highlight"
+        }
+      }
     }
   }
 }

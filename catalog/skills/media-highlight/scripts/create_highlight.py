@@ -5,10 +5,20 @@ import os
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
-FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
-FFPROBE = os.environ.get("FFPROBE", "ffprobe")
+DEFAULT_FFMPEG = "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"
+DEFAULT_FFPROBE = "/opt/homebrew/opt/ffmpeg-full/bin/ffprobe"
+FFMPEG = os.environ.get("FFMPEG", DEFAULT_FFMPEG if Path(DEFAULT_FFMPEG).exists() else "ffmpeg")
+FFPROBE = os.environ.get("FFPROBE", DEFAULT_FFPROBE if Path(DEFAULT_FFPROBE).exists() else "ffprobe")
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp"}
+
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except Exception:
+    pass
 
 
 def run(cmd):
@@ -68,6 +78,42 @@ def clip_video_filter(fps, color_grade):
     return ",".join(filters)
 
 
+def is_image(path):
+    return Path(path).suffix.lower() in IMAGE_EXTENSIONS
+
+
+def fit_cover(img, size):
+    src = img.copy()
+    src.thumbnail(size, Image.Resampling.LANCZOS)
+    scale = max(size[0] / src.width, size[1] / src.height)
+    cover_size = (max(1, int(src.width * scale)), max(1, int(src.height * scale)))
+    cover = img.resize(cover_size, Image.Resampling.LANCZOS)
+    left = (cover.width - size[0]) // 2
+    top = (cover.height - size[1]) // 2
+    return cover.crop((left, top, left + size[0], top + size[1]))
+
+
+def make_photo_frame(source, out_jpg, color_grade=True, mode="auto"):
+    img = ImageOps.exif_transpose(Image.open(source)).convert("RGB")
+    canvas_size = (1920, 1080)
+    aspect = img.width / img.height
+
+    if mode == "cover" or (mode == "auto" and 1.55 <= aspect <= 2.05):
+        frame = fit_cover(img, canvas_size)
+    else:
+        background = fit_cover(img, canvas_size).filter(ImageFilter.GaussianBlur(26))
+        dark = Image.new("RGB", canvas_size, (0, 0, 0))
+        frame = Image.blend(background, dark, 0.28)
+        foreground = ImageOps.contain(img, (1840, 1020), Image.Resampling.LANCZOS)
+        x = (canvas_size[0] - foreground.width) // 2
+        y = (canvas_size[1] - foreground.height) // 2
+        frame.paste(foreground, (x, y))
+
+    if color_grade:
+        frame = ImageOps.autocontrast(frame, cutoff=0.5)
+    frame.save(out_jpg, quality=95)
+
+
 def encode_with_fallback(base_cmd, out_path, bitrate, crf):
     cmd = base_cmd + encode_args_videotoolbox(bitrate) + [
         "-c:a",
@@ -94,6 +140,10 @@ def encode_with_fallback(base_cmd, out_path, bitrate, crf):
 
 
 def extract_cover_frame(source, time_sec, out_png):
+    if is_image(source):
+        make_photo_frame(source, out_png, color_grade=False, mode="cover")
+        return
+
     vf = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080"
     run(
         [
@@ -239,6 +289,43 @@ def render_clip(clip, out_path, fps, bitrate, crf, color_grade=True):
             vf,
             "-shortest",
         ]
+    encode_with_fallback(base, out_path, bitrate, crf)
+
+
+def render_photo(item, out_path, fps, bitrate, crf, work_dir, color_grade=True):
+    source = Path(item["file"])
+    dur = float(item.get("duration", 4.0))
+    photo_dir = work_dir / "photo_frames"
+    photo_dir.mkdir(exist_ok=True)
+    frame_jpg = photo_dir / f"{out_path.stem}.jpg"
+    make_photo_frame(source, frame_jpg, color_grade=color_grade, mode=item.get("fit", "auto"))
+
+    base = [
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-loop",
+        "1",
+        "-t",
+        f"{dur:.3f}",
+        "-i",
+        str(frame_jpg),
+        "-f",
+        "lavfi",
+        "-t",
+        f"{dur:.3f}",
+        "-i",
+        "anullsrc=channel_layout=stereo:sample_rate=48000",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-vf",
+        f"fps={fps},format=yuv420p",
+        "-shortest",
+    ]
     encode_with_fallback(base, out_path, bitrate, crf)
 
 
@@ -450,12 +537,23 @@ def main():
     rendered_durations.append(title_duration)
     print(f"rendered title: {title_mp4}", flush=True)
 
-    for idx, clip in enumerate(config["clips"], 1):
+    items = config.get("items", config.get("clips", []))
+    for idx, item in enumerate(items, 1):
         out = clip_dir / f"{idx:03d}.mp4"
-        render_clip(clip, out, fps, bitrate, crf, color_grade=color_grade)
+        item_type = item.get("type")
+        if not item_type:
+            item_type = "photo" if is_image(item["file"]) else "video"
+
+        if item_type == "photo":
+            render_photo(item, out, fps, bitrate, crf, work_dir, color_grade=color_grade)
+        elif item_type == "video":
+            render_clip(item, out, fps, bitrate, crf, color_grade=color_grade)
+        else:
+            raise ValueError(f"Unsupported item type: {item_type}")
+
         rendered.append(out)
-        rendered_durations.append(float(clip["duration"]))
-        print(f"rendered {idx:02d}/{len(config['clips']):02d}: {Path(clip['file']).name}", flush=True)
+        rendered_durations.append(float(item.get("duration", 4.0)))
+        print(f"rendered {idx:02d}/{len(items):02d}: {Path(item['file']).name}", flush=True)
 
     output = Path(config["output"])
     tmp_output = output.with_suffix(".tmp.mp4")

@@ -18,7 +18,7 @@ Default mode is **high-quality memory pass**. Unless the user explicitly asks fo
 3. Use high-quality mode by default:
    - Run STT/VAD across all source audio before selecting clips when speech may matter, then use speech meaning as part of the selection score.
    - Use word-timing-based lower subtitles for meaningful speech moments, not large transcript blocks.
-   - Add generated very-low-volume ambient BGM, preserve original sound, and keep speech/ambient audio in front.
+   - Use a user-approved real BGM track when provided, preserve original sound, and keep speech/ambient audio in front.
    - Apply a light color grade, natural crossfade transitions, and a final 1-2 second video/audio fadeout.
    - Only switch to visual-first mode when the footage clearly does not benefit from STT, such as scuba diving, drone footage, scenery, action sports, underwater clips, or music-only montages.
    - Only use fast memory pass when the user explicitly prioritizes speed.
@@ -28,7 +28,7 @@ Default mode is **high-quality memory pass**. Unless the user explicitly asks fo
 7. Name the output file from the opening title and period, e.g. `강원_여행_하이라이트_2023.06.02-2023.06.05_60fps.mp4`, so it is recognizable later.
 8. Render 1080p or source-appropriate output, usually 60 fps when the source supports it.
 9. Preserve original audio when available. Use `acrossfade` between clips so sound does not cut abruptly.
-10. Add generated, very subtle ambient BGM by default while keeping original ambient audio audible. Music should support the footage, not dominate it.
+10. Add BGM only when a user-approved real music file is provided. Otherwise keep the original audio only. Music should support the footage, not dominate it.
 11. Apply light color correction by default: a little more contrast/saturation/brightness, never a heavy filter look.
 12. Use video `xfade` transitions instead of repeated black fades.
 13. Add a gentle 1-2 second ending fade for both video and audio unless the user asks for a hard ending.
@@ -68,7 +68,7 @@ For high-quality memory highlights, score candidate moments with both visual and
 ## Audio And Music
 
 - Keep original sound as the emotional anchor when it contains waves, footsteps, city ambience, laughter, reactions, or underwater breathing.
-- Add generated quiet ambient BGM by default, especially montages or scenery-heavy sequences.
+- Do not generate BGM. Use only a user-approved downloaded music file, or render with original audio only.
 - Mix conservatively: background music should usually sit under the original audio, with ambient sound still audible.
 - Fade music and original audio at the end with a 1-2 second tail.
 - Do not add music if it fights important speech unless ducking or careful volume automation is used.
@@ -183,8 +183,8 @@ The config should include:
   "fps": 60,
   "transition": 0.8,
   "title_duration": 2.0,
-  "ambient_bgm": true,
-  "ambient_bgm_volume": 0.16,
+  "bgm_file": "/absolute/path/youtube-audio-library-track.mp3",
+  "bgm_volume": 0.12,
   "color_grade": true,
   "ending_fade_duration": 1.5,
   "subtitle_file": "/absolute/path/word-timed-subtitles.srt",
@@ -204,3 +204,19 @@ The config should include:
 ```
 
 For first passes, create a contact sheet from candidate clips before rendering the final video. If the user critiques the result, revise the config rather than starting from scratch.
+
+## BGM Selection
+
+Do not use generated BGM. Use a real track from a license-checkable library such as YouTube Audio Library, Mixkit, Pixabay, or another user-approved source. If no `bgm_file` is provided, render with original audio only.
+
+When using YouTube Audio Library:
+
+- Choose candidates after inspecting the footage tone, not before.
+- Use YouTube Audio Library filters for genre, mood, duration, attribution requirement, and search terms.
+- Prefer `Attribution not required` when the output is likely to be shared casually.
+- Avoid tracks that fight speech; for speech-heavy clips choose ambient, cinematic, acoustic, soft, calm, inspirational, or low-intensity music.
+- For scenic highlights, consider cinematic, ambient, acoustic, lo-fi, calm, bright, hopeful, or sentimental moods.
+- For energetic trips, beach, city, sports, or social clips, consider upbeat, dance/electronic, pop, hip-hop, bright, happy, or driving moods.
+- Download the MP3 and preserve the track title, artist, source URL, license type, and attribution text if required in the work directory.
+- Put the chosen local file in config as `bgm_file`. The renderer loops/trims it to the final video duration and applies the configured `bgm_volume`.
+- Start with `bgm_volume` around `0.08-0.14` when original audio or speech matters, and `0.14-0.22` for music-led montages.

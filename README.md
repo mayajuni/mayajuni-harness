@@ -1,6 +1,6 @@
 # mayajuni-harness
 
-`@mayajuni/harness`는 여러 스킬을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`, `video-highlight`는 `codex`, `claude` 2타깃을 지원합니다.
+`@mayajuni/harness`는 여러 스킬을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`, `video-highlight`, `media-highlight`는 `codex`, `claude` 2타깃을 지원합니다.
 
 기본 사용은 질문형 CLI입니다. 옵션을 생략하면 `scope`, `skills`, `tools`를 순서대로 물어봅니다.
 
@@ -20,7 +20,10 @@
     ├── mj-live-browse/
     │   ├── SKILL.md
     │   └── references/
-    └── video-highlight/
+    ├── video-highlight/
+    │   ├── SKILL.md
+    │   └── scripts/
+    └── media-highlight/
         ├── SKILL.md
         └── scripts/
 ```
@@ -79,6 +82,7 @@ mhs install --all
 mhs install mj-live-browse --codex
 mhs install mj-live-browse --claude
 mhs install video-highlight --codex
+mhs install media-highlight --codex
 ```
 
 프로젝트 스코프로 설치:
@@ -170,4 +174,5 @@ Codex와 Claude Code가 같은 Agent Skills 형식을 쓰기 때문에 `skills.j
 npx @mayajuni/harness install mj-live-browse --codex
 bunx @mayajuni/harness install mj-live-browse --claude
 npx @mayajuni/harness install video-highlight --codex
+npx @mayajuni/harness install media-highlight --codex
 ```
