@@ -1,6 +1,6 @@
 ---
 name: video-highlight
-description: Create memory-style highlight videos from large folders of personal footage. Use when the user wants Codex to select good moments, avoid bad composition, add a location/date title card, preserve or mix original audio, use natural transitions, render a single MP4, and verify the result with ffprobe and preview sheets.
+description: Create memory-style highlight videos from large folders of personal footage. Use when the user wants Codex to select good moments, avoid bad composition, add a location/date title card, optional broad location subtitles, preserve or mix original audio, use natural transitions, render a single MP4, and verify the result with ffprobe and preview sheets.
 metadata:
   short-description: Make polished memory highlight videos
 ---
@@ -13,11 +13,12 @@ Default mode is **high-quality memory pass**. Unless the user explicitly asks fo
 
 ## Workflow
 
-1. Inspect sources with `ffprobe`: count files, total duration, resolution, fps, and whether audio exists.
+1. Inspect sources with `ffprobe`: count files, total duration, resolution, fps, GPS/location tags when present, and whether audio exists.
 2. Before heavy work, check dependencies. If required tools or the Whisper model are missing, run `scripts/setup_dependencies.py`.
 3. Use high-quality mode by default:
    - Run STT/VAD across all source audio before selecting clips when speech may matter, then use speech meaning as part of the selection score.
    - Use word-timing-based lower subtitles for meaningful speech moments, not large transcript blocks.
+   - Use broad location subtitles when GPS, nearby photo GPS, STT, filenames, or visible signs can reliably identify the region.
    - Use a user-approved real BGM track when provided, preserve original sound, and keep speech/ambient audio in front.
    - Apply a light color grade, natural crossfade transitions, and a final 1-2 second video/audio fadeout.
    - Only switch to visual-first mode when the footage clearly does not benefit from STT, such as scuba diving, drone footage, scenery, action sports, underwater clips, or music-only montages.
@@ -32,9 +33,10 @@ Default mode is **high-quality memory pass**. Unless the user explicitly asks fo
 11. Apply light color correction by default: a little more contrast/saturation/brightness, never a heavy filter look.
 12. Use video `xfade` transitions instead of repeated black fades.
 13. Add a gentle 1-2 second ending fade for both video and audio unless the user asks for a hard ending.
-14. Run final STT when speech is present and useful. Use word-level timing to create natural sentence or phrase subtitles.
-15. Run post-render QA. Do not stop at “file created”: verify technical integrity and whether the final video actually works as a memory highlight.
-16. If QA finds a meaningful issue, revise the config and re-render the smallest necessary scope instead of delivering a known-weak result.
+14. Add broad location subtitles when they improve orientation without cluttering the memory film.
+15. Run final STT when speech is present and useful. Use word-level timing to create natural sentence or phrase subtitles.
+16. Run post-render QA. Do not stop at “file created”: verify technical integrity and whether the final video actually works as a memory highlight.
+17. If QA finds a meaningful issue, revise the config and re-render the smallest necessary scope instead of delivering a known-weak result.
 
 ## Dependencies
 
@@ -64,6 +66,20 @@ For high-quality memory highlights, score candidate moments with both visual and
 - Balance: do not include every source equally. Include what helps the user remember the trip.
 - Exclusions: camera handling, pockets, covered lens, accidental low-angle walking, and overly tilted footage unless the speech is unusually meaningful.
 - For scuba, underwater, drone, scenery, or action-first footage, prioritize motion, clarity, subject visibility, composition, variety, and pacing over STT. Use captions only for location/date/chapter cues if helpful.
+
+## Location Labels
+
+Use location labels as light orientation cues, especially when the highlight is chronological and spans multiple places:
+
+- Prefer broad names such as `Da Lat`, `Nha Trang`, `Seoul`, or `Osaka`, not exact restaurants or hotels, unless the user asks for detail.
+- Ground labels in the strongest available evidence: video GPS tags, nearby photo EXIF GPS by timestamp, STT place names, filenames, visible signs, or landmarks.
+- Treat `(0,0)` GPS and impossible coordinates as invalid.
+- Cluster nearby coordinates into region spans. For clips without GPS, infer the region from adjacent media captured around the same time.
+- Show the current broad location continuously during its region span, starting after the opening title clears and changing only when the broad region changes.
+- Use short fades at region changes. If the label feels visually distracting for a particular video, fall back to brief 4-6 second chapter-style labels.
+- Avoid covering faces, food, signs, or speech subtitles. A small upper-left caption usually works well.
+- If speech subtitles are also present, use `subtitle_file` for speech and `location_subtitle_file` for location labels so both can be burned in sequence.
+- QA at least one frame for every location label.
 
 ## Audio And Music
 
@@ -108,13 +124,14 @@ Technical QA checklist:
 - Run `silencedetect` to catch long unintended audio dropouts. Intentional silent title cards are acceptable; unexpected mid-video silence is not.
 - Run `volumedetect` or equivalent to catch clipping and obviously too-quiet audio. Speech should not be buried under BGM.
 - Create a final timeline contact sheet with timestamps across the whole rendered output, not only source candidates.
-- Extract at least one title-card frame, one subtitle frame if subtitles are present, and one ending frame. Inspect them for readability, cropping, overlap, and professional layout.
+- Extract at least one title-card frame, one subtitle frame if subtitles are present, one frame per location label if present, and one ending frame. Inspect them for readability, cropping, overlap, and professional layout.
 - Confirm the final file path is the intended keeper file, and remove or clearly distinguish draft/no-sub/intermediate outputs if the user asked for cleanup.
 
 Memory-highlight QA checklist:
 
 - Compare source chronological order against the final clip order. The final story should not accidentally jump backward unless that is an intentional creative choice.
 - Confirm every important source period or location is represented, or explicitly note why a source was excluded.
+- Confirm location labels are grounded in GPS, nearby timestamp evidence, STT, or visible place evidence, and that they appear only when useful.
 - Check that the title and date are grounded in source metadata or STT evidence. Do not infer “day 1/day 2” in the title unless the user asked for that wording.
 - Verify the opening gives context, the middle has variety, and the ending feels like a natural closing memory rather than an arbitrary cutoff.
 - Check for repeated-looking shots, camera handling, covered lens, ground/feet-only walking, awkward tilted footage, or duplicate views that slipped through selection.
@@ -189,6 +206,8 @@ The config should include:
   "ending_fade_duration": 1.5,
   "subtitle_file": "/absolute/path/word-timed-subtitles.srt",
   "subtitle_style": "FontSize=18,MarginV=22,Alignment=2,Outline=1,Shadow=0",
+  "location_subtitle_file": "/absolute/path/location-labels.ass",
+  "location_subtitle_style": "FontSize=22,MarginV=58,MarginL=72,Alignment=7,Outline=2,Shadow=1",
   "cover": {
     "file": "/absolute/path/source.mp4",
     "time": 80.0

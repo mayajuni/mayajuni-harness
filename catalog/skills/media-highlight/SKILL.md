@@ -1,6 +1,6 @@
 ---
 name: media-highlight
-description: Create memory-style highlight videos from mixed personal media folders containing photos, videos, or both. Use when Codex should inspect every photo, select strong video moments, reject low-quality or duplicate media, combine still images and video clips into one polished MP4, preserve useful original audio, add subtle BGM, optional STT subtitles, and verify the final output.
+description: Create memory-style highlight videos from mixed personal media folders containing photos, videos, or both. Use when Codex should inspect every photo, select strong video moments, reject low-quality or duplicate media, combine still images and video clips into one polished MP4, preserve useful original audio, add subtle BGM, optional STT and location subtitles, and verify the final output.
 metadata:
   short-description: Make polished highlights from photos and videos
 ---
@@ -24,7 +24,7 @@ Default mode is **high-quality memory pass**. Unless the user explicitly asks fo
 
 1. Inspect all sources:
    - Run `scripts/analyze_media.py --input /path/to/media --work-dir /path/to/work`.
-   - Count photos and videos, read timestamps, dimensions, duration, audio presence, and quality flags.
+   - Count photos and videos, read timestamps, GPS/location metadata when present, dimensions, duration, audio presence, and quality flags.
    - Generate contact sheets that cover every readable photo and representative video frames.
 2. Check dependencies before heavy work. If required tools are missing, run `scripts/setup_dependencies.py`.
 3. Review the media inventory:
@@ -47,6 +47,7 @@ Default mode is **high-quality memory pass**. Unless the user explicitly asks fo
   "transition": 0.8,
   "bgm_file": "/absolute/path/youtube-audio-library-track.mp3",
   "bgm_volume": 0.12,
+  "location_subtitle_file": "/absolute/path/location-labels.ass",
   "color_grade": true,
   "cover": {
     "file": "/absolute/path/cover.jpg"
@@ -73,14 +74,15 @@ Default mode is **high-quality memory pass**. Unless the user explicitly asks fo
    - Photos: severe blur, accidental shots, covered lens, screenshots, receipts unless meaningful, duplicate bursts, bad exposure, awkward crops, or images that add no story value.
    - Videos: covered lens, sideways accidental footage, mostly ground/legs, dark pocket shots, camera handling, excessive shake, duplicate views, and cuts that interrupt meaningful speech.
 7. Preserve chronology unless a creative reorder is intentional. Use EXIF/image timestamps, video metadata, filename order, and user-provided context.
-8. Use a strong photo or video frame as the title card background. Add title and period text.
-9. Render 1080p or source-appropriate output, usually 60 fps when the source supports it.
-10. Preserve original video audio when available. Photos render with silent audio and blend naturally through `acrossfade`.
-11. Add BGM only when a user-approved real music file is provided. If no `bgm_file` is provided, render with original video audio and silent photo segments only.
-12. Apply light color correction by default; never use a heavy filter look.
-13. Use crossfades instead of repeated black fades.
-14. Add a gentle 1-2 second ending fade for both video and audio unless the user asks for a hard ending.
-15. Run post-render QA. Do not stop at “file created.”
+8. If GPS or reliable place evidence exists, add broad location labels when they help orient the viewer.
+9. Use a strong photo or video frame as the title card background. Add title and period text.
+10. Render 1080p or source-appropriate output, usually 60 fps when the source supports it.
+11. Preserve original video audio when available. Photos render with silent audio and blend naturally through `acrossfade`.
+12. Add BGM only when a user-approved real music file is provided. If no `bgm_file` is provided, render with original video audio and silent photo segments only.
+13. Apply light color correction by default; never use a heavy filter look.
+14. Use crossfades instead of repeated black fades.
+15. Add a gentle 1-2 second ending fade for both video and audio unless the user asks for a hard ending.
+16. Run post-render QA. Do not stop at “file created.”
 
 ## Photo Review Policy
 
@@ -88,7 +90,7 @@ The default is **exhaustive accounting**, not necessarily exhaustive long-form c
 
 For every photo:
 
-- Record path, dimensions, timestamp when available, readability, orientation handling, quality metrics, duplicate hash, and flags.
+- Record path, dimensions, timestamp when available, GPS when available, readability, orientation handling, quality metrics, duplicate hash, and flags.
 - Include it in a contact sheet unless unreadable.
 - Either select it, reject it, or keep it as a near-duplicate/backup with a reason.
 
@@ -98,6 +100,21 @@ Meaning/content judgment has two levels:
 - Exhaustive semantic mode: if the user asks for every image to receive an individual description, do it in batches. This is possible but scales linearly with image count and can be slow/costly for hundreds or thousands of photos.
 
 Do not claim that every image was semantically understood unless every image was actually reviewed at that level.
+
+## Location Labels
+
+When source media has GPS metadata or strong place evidence, use it to orient the highlight with light location labels:
+
+- Prefer broad names such as `Da Lat`, `Nha Trang`, `Seoul`, or `Osaka`, not exact restaurants or hotels, unless the user asks for detailed place names.
+- Use the strongest source first: photo EXIF GPS, video GPS tags, nearby photo GPS by timestamp, then visual evidence such as landmark signs or maps.
+- Treat `(0,0)` GPS and other impossible coordinates as invalid.
+- Cluster nearby coordinates into region spans and preserve chronological order. For videos without GPS, infer the region from adjacent media captured around the same time.
+- Show the current broad location continuously during its region span, starting after the opening title clears and changing only when the broad region changes.
+- Use short fades at region changes. If the label feels visually distracting for a particular video, fall back to brief 4-6 second chapter-style labels.
+- Avoid showing location labels over the opening title if they compete with the title; delay the first label until the title clears.
+- Place labels as small upper-left captions or another unobtrusive corner. They are orientation cues, not subtitles.
+- If speech subtitles are also present, burn speech subtitles and location labels as separate tracks using `subtitle_file` and `location_subtitle_file`.
+- QA at least one frame for each location label to confirm readability, placement, and that it does not cover faces, food, landmarks, or existing text.
 
 ## Dependencies
 
@@ -174,6 +191,7 @@ Memory-highlight QA:
 
 - Confirm every readable photo was accounted for in the analysis report/contact sheets.
 - Confirm every important time period or location is represented, or explain why it was excluded.
+- If location labels are present, confirm each broad region label is grounded in GPS, nearby timestamp evidence, or visible place evidence.
 - Check that photos add memory value rather than acting as filler.
 - Check for duplicate-looking photos or repeated video views that slipped through.
 - Confirm transitions do not cut off speech, reactions, or scenic motion.

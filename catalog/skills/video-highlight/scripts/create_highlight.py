@@ -286,6 +286,8 @@ def build_crossfade(
     fade_duration=1.5,
     subtitle_file=None,
     subtitle_style=None,
+    location_subtitle_file=None,
+    location_subtitle_style=None,
 ):
     inputs = []
     for path in rendered:
@@ -320,6 +322,13 @@ def build_crossfade(
         subtitled_v = "vsub"
         filters.append(
             f"[{video_out}]subtitles='{escape_filter_arg(subtitle_file)}':force_style='{escape_filter_arg(style)}'[{subtitled_v}]"
+        )
+        video_out = subtitled_v
+    if location_subtitle_file:
+        style = location_subtitle_style or "FontSize=22,MarginV=58,MarginL=72,Alignment=7,Outline=2,Shadow=1"
+        subtitled_v = "vloc"
+        filters.append(
+            f"[{video_out}]subtitles='{escape_filter_arg(location_subtitle_file)}':force_style='{escape_filter_arg(style)}'[{subtitled_v}]"
         )
         video_out = subtitled_v
     if fade_duration > 0:
@@ -437,6 +446,8 @@ def main():
     ending_fade_duration = float(config.get("ending_fade_duration", 1.5))
     subtitle_file = config.get("subtitles") or config.get("subtitle_file")
     subtitle_style = config.get("subtitle_style")
+    location_subtitle_file = config.get("location_subtitles") or config.get("location_subtitle_file")
+    location_subtitle_style = config.get("location_subtitle_style")
 
     for old in clip_dir.glob("*.mp4"):
         old.unlink()
@@ -476,6 +487,8 @@ def main():
         fade_duration=ending_fade_duration,
         subtitle_file=subtitle_file,
         subtitle_style=subtitle_style,
+        location_subtitle_file=location_subtitle_file,
+        location_subtitle_style=location_subtitle_style,
     )
     tmp_output.replace(output)
 

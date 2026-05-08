@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ FFPROBE = os.environ.get("FFPROBE", DEFAULT_FFPROBE if Path(DEFAULT_FFPROBE).exi
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp"}
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".avi", ".mkv", ".mts", ".m2ts", ".3gp"}
 EXIF_DATE_TAGS = (36867, 36868, 306)
+GPS_IFD_TAG = 34853
 
 try:
     from pillow_heif import register_heif_opener
@@ -65,6 +67,56 @@ def parse_exif_datetime(value):
         except ValueError:
             pass
     return text
+
+
+def rational_to_float(value):
+    try:
+        return float(value)
+    except Exception:
+        return float(value[0]) / float(value[1])
+
+
+def dms_to_decimal(value, ref):
+    decimal = rational_to_float(value[0]) + rational_to_float(value[1]) / 60 + rational_to_float(value[2]) / 3600
+    if ref in ("S", "W"):
+        decimal = -decimal
+    return decimal
+
+
+def parse_photo_gps(exif):
+    try:
+        gps_ifd = exif.get_ifd(GPS_IFD_TAG)
+        if not gps_ifd or 1 not in gps_ifd or 2 not in gps_ifd or 3 not in gps_ifd or 4 not in gps_ifd:
+            return None
+        lat = dms_to_decimal(gps_ifd[2], gps_ifd[1])
+        lon = dms_to_decimal(gps_ifd[4], gps_ifd[3])
+        if abs(lat) < 0.1 and abs(lon) < 0.1:
+            return None
+        return {"lat": round(lat, 7), "lon": round(lon, 7), "source": "exif"}
+    except Exception:
+        return None
+
+
+def parse_iso6709_location(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    match = re.match(r"^([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)", text)
+    if not match:
+        return None
+    lat = float(match.group(1))
+    lon = float(match.group(2))
+    if abs(lat) < 0.1 and abs(lon) < 0.1:
+        return None
+    return {"lat": round(lat, 7), "lon": round(lon, 7), "source": "format_tags"}
+
+
+def parse_video_gps(tags):
+    for key in ("com.apple.quicktime.location.ISO6709", "com.apple.quicktime.location.iso6709", "location", "location-eng"):
+        gps = parse_iso6709_location(tags.get(key))
+        if gps:
+            return gps
+    return None
 
 
 def image_dhash(img):
@@ -123,14 +175,16 @@ def analyze_photo(path, index):
         "readable": False,
     }
     try:
-        img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
-        exif = img.getexif()
+        raw = Image.open(path)
+        exif = raw.getexif()
+        img = ImageOps.exif_transpose(raw).convert("RGB")
         taken_at = None
         for tag in EXIF_DATE_TAGS:
             taken_at = parse_exif_datetime(exif.get(tag))
             if taken_at:
                 break
         metrics = image_metrics(img)
+        gps = parse_photo_gps(exif)
         record.update(
             {
                 "readable": True,
@@ -142,6 +196,8 @@ def analyze_photo(path, index):
                 "quality": metrics,
             }
         )
+        if gps:
+            record["gps"] = gps
     except Exception as exc:
         record["error"] = str(exc)
     return record
@@ -159,6 +215,7 @@ def analyze_video(path, index):
         fmt = ffprobe_json(path, "format=duration,size,bit_rate,tags")
         video = ffprobe_json(path, "stream=width,height,r_frame_rate,avg_frame_rate,codec_name", "v:0")
         audio = ffprobe_json(path, "stream=codec_type,codec_name,channels", "a:0")
+        tags = fmt.get("format", {}).get("tags", {})
         stream = video.get("streams", [{}])[0]
         record.update(
             {
@@ -172,6 +229,12 @@ def analyze_video(path, index):
                 "has_audio": bool(audio.get("streams")),
             }
         )
+        creation_time = tags.get("creation_time") or tags.get("com.apple.quicktime.creationdate")
+        if creation_time:
+            record["taken_at"] = creation_time
+        gps = parse_video_gps(tags)
+        if gps:
+            record["gps"] = gps
     except Exception as exc:
         record["error"] = str(exc)
     return record
