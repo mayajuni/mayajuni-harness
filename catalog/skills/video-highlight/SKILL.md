@@ -228,6 +228,15 @@ For first passes, create a contact sheet from candidate clips before rendering t
 
 Do not use generated BGM. Use a real track from a license-checkable library such as YouTube Audio Library, Mixkit, Pixabay, or another user-approved source. If no `bgm_file` is provided, render with original audio only.
 
+Preferred bright vlog/trip pool:
+
+- When the highlight feels like bright personal vlog footage, city wandering, food, beach, pool, scooter/driving, friends, or sunny outdoor memories, choose from the user's approved candidate pool before searching broader libraries.
+- Strong defaults: `Ikson - Sunny`, `Scandinavianz - Vacation`, `Scandinavianz - Sunny Island`, `MBB - Feel Good`, `LiQWYD - Feel`, `LiQWYD - Free`, `Joakim Karud - Dreams`.
+- Also use the `Scandinavianz - Travel` playlist as a discovery pool; audition 2-3 tracks from it when one fixed candidate does not fit.
+- Match energy to footage: tropical house/happy tracks for food, streets, beaches, pools, and sunny travel; feel-good vlog tracks for mixed motion and city movement; relaxed hip-hop/pop only when the edit is warm and unhurried.
+- Prefer official artist pages, YouTube Audio Library, verified artist download links, or other source URLs the user approves. Preserve title, artist, source URL, and license/attribution note in the work directory.
+- If the user says copyright does not matter for private viewing, still avoid generated BGM and still record the source URL, but prioritize the best emotional fit from the approved pool.
+
 When using YouTube Audio Library:
 
 - Choose candidates after inspecting the footage tone, not before.
