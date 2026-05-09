@@ -231,6 +231,7 @@ Do not use generated BGM. Use a real track from a license-checkable library such
 Preferred bright vlog/trip pool:
 
 - When the highlight feels like bright personal vlog footage, city wandering, food, beach, pool, scooter/driving, friends, or sunny outdoor memories, choose from the user's approved candidate pool before searching broader libraries.
+- If the user has not named a specific BGM but this pool fits the footage, pick the best-matching track yourself, download it from an official or user-approved source, and put it into the render without asking for another approval round.
 - Strong defaults: `Ikson - Sunny`, `Scandinavianz - Vacation`, `Scandinavianz - Sunny Island`, `MBB - Feel Good`, `LiQWYD - Feel`, `LiQWYD - Free`, `Joakim Karud - Dreams`.
 - Also use the `Scandinavianz - Travel` playlist as a discovery pool; audition 2-3 tracks from it when one fixed candidate does not fit.
 - Match energy to footage: tropical house/happy tracks for food, streets, beaches, pools, and sunny travel; feel-good vlog tracks for mixed motion and city movement; relaxed hip-hop/pop only when the edit is warm and unhurried.
