@@ -9,6 +9,9 @@ import assert from "node:assert/strict";
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI = path.join(REPO_ROOT, "bin", "harness-skills.js");
+const MANIFEST = JSON.parse(
+  fs.readFileSync(path.join(REPO_ROOT, "skills.json"), "utf8"),
+);
 
 function runCli(args, options = {}) {
   return execFileAsync(process.execPath, [CLI, ...args], {
@@ -21,17 +24,16 @@ test("list --json returns manifest entries", async () => {
   const { stdout } = await runCli(["list", "--json"]);
   const parsed = JSON.parse(stdout);
   const names = parsed.map((row) => row.name);
-  assert.deepEqual(names, ["mj-live-browse", "video-highlight", "media-highlight"]);
+  assert.deepEqual(names, Object.keys(MANIFEST.skills));
 });
 
 test("validate exits 0 for the shipped catalog", async () => {
   const { stdout } = await runCli(["validate"]);
-  assert.match(stdout, /OK mj-live-browse:codex/);
-  assert.match(stdout, /OK mj-live-browse:claude/);
-  assert.match(stdout, /OK video-highlight:codex/);
-  assert.match(stdout, /OK video-highlight:claude/);
-  assert.match(stdout, /OK media-highlight:codex/);
-  assert.match(stdout, /OK media-highlight:claude/);
+  for (const [skillName, skill] of Object.entries(MANIFEST.skills)) {
+    for (const targetName of Object.keys(skill.targets)) {
+      assert.match(stdout, new RegExp(`OK ${skillName}:${targetName}`));
+    }
+  }
 });
 
 test("install --dry-run reports targets without writing", async () => {
