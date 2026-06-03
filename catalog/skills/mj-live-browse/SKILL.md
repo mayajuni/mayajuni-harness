@@ -158,13 +158,25 @@ fi
 
 ## 마무리
 
-작업 완료 후 결과를 사용자에게 텍스트로 요약 보고. Chrome Beta는 **종료하지 않는다** — 사용자가 같은 세션을 계속 쓸 수 있도록 살려둔다.
+작업을 정상 완료하고 결과를 확인한 뒤에는 사용한 Chrome Beta CDP 브라우저를 **자동 종료**한다.
+사용자에게 결과를 텍스트로 요약 보고할 때 브라우저 종료 여부도 함께 포함한다.
 
-(작업이 끝나고 사용자가 명시적으로 닫아 달라 하면:
 ```bash
 pkill -f "Google Chrome Beta.*--remote-debugging-port=9222" || true
 ```
-)
+
+단, 로그인/2차 인증/캡차/사용자 확인 대기처럼 작업이 아직 완료되지 않은 상태에서는 닫지 않는다.
+사용자가 후속 확인을 마친 뒤 이어서 작업할 수 있도록 Chrome Beta를 유지한다.
+
+종료 확인이 필요하면:
+
+```bash
+if curl -s --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+  echo "Chrome Beta CDP still running"
+else
+  echo "Chrome Beta CDP closed"
+fi
+```
 
 ---
 
@@ -193,7 +205,7 @@ pkill -f "Google Chrome Beta.*--remote-debugging-port=9222" || true
 7. ref는 DOM 바뀌면 무효 → 재 snapshot.
 8. iframe → playwright-cli, Flutter → API 직접 호출 검토.
 9. screenshot + 이미지 Read 금지(토큰 폭발). 텍스트는 `body.innerText.substring`으로 추출.
-10. 작업 끝나도 Chrome Beta 살려둠.
+10. 정상 완료 후 Chrome Beta CDP 브라우저 자동 종료.
 11. 결제/탈퇴/삭제 직전만 확인.
 
 ## 참조 문서
