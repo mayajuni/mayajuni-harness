@@ -1,0 +1,4 @@
+interface:
+  display_name: "API Site Mapper"
+  short_description: "Map web app APIs from traffic"
+  default_prompt: "Use $api-site-mapper to map this logged-in web app's APIs, parameters, response fields, screen labels, UI field meanings, and code-value mappings."

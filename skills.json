@@ -54,6 +54,17 @@
           "source": "catalog/skills/blog-write"
         }
       }
+    },
+    "api-site-mapper": {
+      "description": "mj-live-browse 방식의 Chrome Beta CDP 로그인 세션을 직접 부트스트랩하고, 로그인된 웹앱을 실제 브라우저에서 탐색하며 메뉴/페이지별 API, request parameter, response schema, 화면 라벨, 응답 필드 의미, 코드값 매핑, storage key를 수집해 API 인벤토리와 데이터 사전을 만든다.",
+      "targets": {
+        "codex": {
+          "source": "catalog/skills/api-site-mapper"
+        },
+        "claude": {
+          "source": "catalog/skills/api-site-mapper"
+        }
+      }
     }
   }
 }

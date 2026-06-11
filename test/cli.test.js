@@ -166,6 +166,44 @@ test("media-highlight installs its analysis and render scripts", async () => {
   }
 });
 
+test("api-site-mapper installs its capture script and references", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  const env = {
+    ...process.env,
+    HARNESS_CODEX_SKILLS_DIR: tmp,
+  };
+  try {
+    await runCli(
+      ["install", "api-site-mapper", "--global", "--codex", "--force"],
+      { env },
+    );
+    const installed = path.join(tmp, "api-site-mapper", "SKILL.md");
+    assert.ok(fs.existsSync(installed), "expected SKILL.md after install");
+    const captureScript = path.join(
+      tmp,
+      "api-site-mapper",
+      "scripts",
+      "cdp_api_capture.mjs",
+    );
+    assert.ok(
+      fs.existsSync(captureScript),
+      "expected cdp_api_capture.mjs to be copied",
+    );
+    const outputReference = path.join(
+      tmp,
+      "api-site-mapper",
+      "references",
+      "output-format.md",
+    );
+    assert.ok(
+      fs.existsSync(outputReference),
+      "expected output-format.md to be copied",
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test("codex project scope defaults to .agents/skills", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
   try {
