@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -10,6 +11,8 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const MANIFEST_PATH = path.join(REPO_ROOT, "skills.json");
 const HINDSIGHT_INSTALLER = "hindsight-project";
 const HINDSIGHT_INSTALL_DIR = path.join(".codex", "hindsight");
+const HINDSIGHT_SECRETS_FILE = "secrets.json";
+const HINDSIGHT_SECRETS_EXCLUDE = "/.codex/hindsight/secrets.json";
 const HINDSIGHT_HOOK_MARKER = "/.codex/hindsight/scripts/";
 const HINDSIGHT_RUNTIME_FILES = [
   "README.md",
@@ -119,6 +122,10 @@ async function runInstall(args) {
   const hindsightBankId = hindsightSelected
     ? await resolveHindsightBankId(options.flags)
     : null;
+  const hindsightApiToken =
+    hindsightSelected && !options.flags["dry-run"]
+      ? await resolveHindsightApiToken()
+      : null;
 
   for (const skillName of selectedSkillNames) {
     const skill = manifest.skills[skillName];
@@ -139,6 +146,7 @@ async function runInstall(args) {
         scopeName,
         bankId: hindsightBankId,
         apiUrl: hindsightApiUrl,
+        apiToken: hindsightApiToken,
         flags: options.flags,
       });
       continue;
@@ -644,6 +652,35 @@ function validateHindsightApiUrl(apiUrl) {
   return normalized;
 }
 
+async function resolveHindsightApiToken() {
+  const projectRoot = findProjectRoot(process.cwd());
+  const existingToken = readHindsightApiToken(projectRoot);
+  const environmentToken = normalizeHindsightApiToken(
+    process.env.HINDSIGHT_API_TOKEN,
+  );
+
+  if (!canPrompt()) {
+    return existingToken || environmentToken;
+  }
+
+  const fallbackDescription = existingToken
+    ? "press Enter to preserve the existing project token"
+    : environmentToken
+      ? "press Enter to store HINDSIGHT_API_TOKEN for this project"
+      : "press Enter to use a runtime environment variable instead";
+  const answer = await askSecret(
+    `Hindsight API token (${fallbackDescription}):`,
+  );
+  return normalizeHindsightApiToken(answer) || existingToken || environmentToken;
+}
+
+function normalizeHindsightApiToken(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  return value.trim() || null;
+}
+
 function suggestHindsightBankId(projectRoot) {
   return (
     path
@@ -677,6 +714,7 @@ function installHindsightBundle({
   scopeName,
   bankId,
   apiUrl,
+  apiToken,
   flags,
 }) {
   assertSupportedScope(skillName, skill, scopeName);
@@ -745,6 +783,10 @@ function installHindsightBundle({
     bankId,
     targets: [...installedTargets].sort(),
   });
+  if (apiToken) {
+    writeHindsightSecrets(projectRoot, apiToken);
+    ensureHindsightSecretsExcluded(projectRoot);
+  }
 
   for (const targetName of targetNames) {
     const settingsPath = hindsightSettingsPath(projectRoot, targetName);
@@ -753,11 +795,65 @@ function installHindsightBundle({
       `Installed ${skillName}:${targetName} [project] bank=${bankId} -> ${installDir}`,
     );
   }
-  if (!process.env.HINDSIGHT_API_TOKEN) {
+  if (!apiToken && !process.env.HINDSIGHT_API_TOKEN) {
     console.warn(
-      "HINDSIGHT_API_TOKEN is not set in this shell. The installed hooks will skip recall and retain until it is available.",
+      "No project Hindsight API token was stored and HINDSIGHT_API_TOKEN is not set. The installed hooks will skip recall and retain until a token is available.",
     );
   }
+}
+
+function hindsightSecretsPath(projectRoot) {
+  return path.join(
+    projectRoot,
+    HINDSIGHT_INSTALL_DIR,
+    HINDSIGHT_SECRETS_FILE,
+  );
+}
+
+function readHindsightApiToken(projectRoot) {
+  const secrets = readJsonFile(hindsightSecretsPath(projectRoot), null);
+  return normalizeHindsightApiToken(secrets?.hindsightApiToken);
+}
+
+function writeHindsightSecrets(projectRoot, apiToken) {
+  const secretsPath = hindsightSecretsPath(projectRoot);
+  ensureDirectory(path.dirname(secretsPath));
+  fs.writeFileSync(
+    secretsPath,
+    `${JSON.stringify({ hindsightApiToken: apiToken }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  fs.chmodSync(secretsPath, 0o600);
+  console.log(`Stored project Hindsight API token -> ${secretsPath}`);
+}
+
+function ensureHindsightSecretsExcluded(projectRoot) {
+  const rawExcludePath = execFileSync(
+    "git",
+    ["rev-parse", "--git-path", "info/exclude"],
+    {
+      cwd: projectRoot,
+      encoding: "utf8",
+    },
+  ).trim();
+  const excludePath = path.isAbsolute(rawExcludePath)
+    ? rawExcludePath
+    : path.resolve(projectRoot, rawExcludePath);
+  ensureDirectory(path.dirname(excludePath));
+
+  const existing = fs.existsSync(excludePath)
+    ? fs.readFileSync(excludePath, "utf8")
+    : "";
+  const lines = existing.split(/\r?\n/);
+  if (lines.includes(HINDSIGHT_SECRETS_EXCLUDE)) {
+    return;
+  }
+
+  const prefix = existing && !existing.endsWith("\n") ? "\n" : "";
+  fs.appendFileSync(
+    excludePath,
+    `${prefix}${HINDSIGHT_SECRETS_EXCLUDE}\n`,
+  );
 }
 
 function uninstallHindsightBundle({ targetNames, scopeName }) {
@@ -946,7 +1042,7 @@ function buildHindsightHooks(targetName, bankId) {
   const agentPrefix =
     targetName === "claude" ? "HINDSIGHT_AGENT_NAME=claude-code " : "";
   const command = (scriptName) =>
-    `test -n "$HINDSIGHT_API_TOKEN" || exit 0; PYTHONDONTWRITEBYTECODE=1 HINDSIGHT_BANK_ID=${bankId} HINDSIGHT_DYNAMIC_BANK_ID=false ${agentPrefix}python3 "$(git rev-parse --show-toplevel)/.codex/hindsight/scripts/${scriptName}"`;
+    `test -n "$HINDSIGHT_API_TOKEN" || test -s "$(git rev-parse --show-toplevel)/.codex/hindsight/${HINDSIGHT_SECRETS_FILE}" || exit 0; PYTHONDONTWRITEBYTECODE=1 HINDSIGHT_BANK_ID=${bankId} HINDSIGHT_DYNAMIC_BANK_ID=false ${agentPrefix}python3 "$(git rev-parse --show-toplevel)/.codex/hindsight/scripts/${scriptName}"`;
 
   const hooks = {
     SessionStart: [
@@ -1169,6 +1265,54 @@ async function askInput(prompt) {
   }
 }
 
+async function askSecret(prompt) {
+  const input = process.stdin;
+  const output = process.stdout;
+  if (!input.isTTY || typeof input.setRawMode !== "function") {
+    throw new Error(
+      "A TTY is required for hidden token input. Set HINDSIGHT_API_TOKEN for non-interactive installation.",
+    );
+  }
+
+  output.write(`${prompt} `);
+  const wasRaw = Boolean(input.isRaw);
+  input.setRawMode(true);
+  input.resume();
+
+  return await new Promise((resolve, reject) => {
+    let value = "";
+
+    const cleanup = () => {
+      input.off("data", onData);
+      input.setRawMode(wasRaw);
+      input.pause();
+      output.write("\n");
+    };
+
+    const onData = (chunk) => {
+      for (const character of chunk.toString("utf8")) {
+        if (character === "\u0003") {
+          cleanup();
+          reject(new Error("Input cancelled."));
+          return;
+        }
+        if (character === "\r" || character === "\n") {
+          cleanup();
+          resolve(value);
+          return;
+        }
+        if (character === "\u007f" || character === "\b") {
+          value = value.slice(0, -1);
+          continue;
+        }
+        value += character;
+      }
+    };
+
+    input.on("data", onData);
+  });
+}
+
 function printHelp(exitCode) {
   console.log(`
 mhs
@@ -1185,7 +1329,8 @@ Environment:
   HARNESS_PROJECT_SKILLS_DIR Override project install root (default: native project paths)
 
 Hindsight:
-  Project-only hook bundle. Interactive install prompts for an API URL and bank ID.
+  Project-only hook bundle. Interactive install prompts for an API URL, bank ID, and hidden project token.
+  Non-interactive installs store HINDSIGHT_API_TOKEN when it is set.
   Non-interactive example: mhs install hindsight --project --codex --claude --api-url=https://hindsight.example.com --bank-id=my-project
 `);
   process.exitCode = exitCode;

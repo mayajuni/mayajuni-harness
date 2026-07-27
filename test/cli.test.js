@@ -291,6 +291,7 @@ test("hindsight project bundle installs both hook targets with an explicit API U
       }),
     );
 
+    const projectToken = "test-project-token-do-not-log";
     const { stdout } = await runCli(
       [
         "install",
@@ -301,16 +302,28 @@ test("hindsight project bundle installs both hook targets with an explicit API U
         "--api-url=https://hindsight.example.com/",
         "--bank-id=test-bank",
       ],
-      { cwd: tmp },
+      {
+        cwd: tmp,
+        env: {
+          ...process.env,
+          HINDSIGHT_API_TOKEN: projectToken,
+        },
+      },
     );
     assert.match(stdout, /Installed hindsight:codex/);
     assert.match(stdout, /Installed hindsight:claude/);
     assert.match(stdout, /bank=test-bank/);
+    assert.doesNotMatch(stdout, new RegExp(projectToken));
 
     const installDir = path.join(tmp, ".codex", "hindsight");
+    const secretsPath = path.join(installDir, "secrets.json");
     const settings = JSON.parse(
       fs.readFileSync(path.join(installDir, "settings.json"), "utf8"),
     );
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join(installDir, ".harness-install.json"), "utf8"),
+    );
+    const secrets = JSON.parse(fs.readFileSync(secretsPath, "utf8"));
     const installedReadme = fs.readFileSync(
       path.join(installDir, "README.md"),
       "utf8",
@@ -322,6 +335,15 @@ test("hindsight project bundle installs both hook targets with an explicit API U
       "https://hindsight.example.com",
     );
     assert.equal(settings.bankId, "test-bank");
+    assert.equal(secrets.hindsightApiToken, projectToken);
+    assert.equal(fs.statSync(secretsPath).mode & 0o777, 0o600);
+    assert.doesNotMatch(JSON.stringify(settings), new RegExp(projectToken));
+    assert.doesNotMatch(JSON.stringify(metadata), new RegExp(projectToken));
+    await execFileAsync(
+      "git",
+      ["check-ignore", "-q", ".codex/hindsight/secrets.json"],
+      { cwd: tmp },
+    );
     assert.equal(settings.autoRecall, true);
     assert.equal(settings.autoRetain, true);
     assert.equal(settings.codex.retainMode, "incremental");
@@ -351,7 +373,7 @@ test("hindsight project bundle installs both hook targets with an explicit API U
       /HINDSIGHT_AGENT_NAME=claude-code/,
     );
 
-    await runCli(
+    const { stdout: forceStdout } = await runCli(
       [
         "install",
         "hindsight",
@@ -362,8 +384,21 @@ test("hindsight project bundle installs both hook targets with an explicit API U
         "--bank-id=test-bank",
         "--force",
       ],
-      { cwd: tmp },
+      {
+        cwd: tmp,
+        env: {
+          ...process.env,
+          HINDSIGHT_API_TOKEN: "different-environment-token",
+        },
+      },
     );
+    assert.doesNotMatch(forceStdout, new RegExp(projectToken));
+    assert.equal(
+      JSON.parse(fs.readFileSync(secretsPath, "utf8")).hindsightApiToken,
+      projectToken,
+      "expected --force to preserve the existing project token",
+    );
+    assert.equal(fs.statSync(secretsPath).mode & 0o777, 0o600);
     codexHooks = JSON.parse(fs.readFileSync(codexHooksPath, "utf8"));
     claudeSettings = JSON.parse(
       fs.readFileSync(claudeSettingsPath, "utf8"),
@@ -399,7 +434,7 @@ test("hindsight project bundle installs both hook targets with an explicit API U
         },
       },
     );
-    assert.match(pythonStderr, /Ran 17 tests/);
+    assert.match(pythonStderr, /Ran 18 tests/);
     assert.match(pythonStderr, /OK/);
 
     await runCli(
@@ -407,6 +442,7 @@ test("hindsight project bundle installs both hook targets with an explicit API U
       { cwd: tmp },
     );
     assert.equal(fs.existsSync(installDir), true);
+    assert.equal(fs.existsSync(secretsPath), true);
     codexHooks = JSON.parse(fs.readFileSync(codexHooksPath, "utf8"));
     claudeSettings = JSON.parse(
       fs.readFileSync(claudeSettingsPath, "utf8"),

@@ -123,7 +123,7 @@ mhs uninstall --all --project --yes
 1. `global`인지 `project`인지
 2. 설치할 스킬이 무엇인지, 혹은 `all`인지
 3. 대상 툴이 무엇인지, 혹은 `all`인지
-4. `hindsight`를 선택했다면 연결할 API URL과 프로젝트에서 사용할 bank ID
+4. `hindsight`를 선택했다면 연결할 API URL, 프로젝트에서 사용할 bank ID, 숨김 입력 방식의 프로젝트 API 토큰
 
 `mhs uninstall`도 같은 방식으로 `scope`, `skills`, `tools`를 묻고 마지막에 삭제 확인을 받습니다. 자동화가 필요하면 `--yes`를 쓸 수 있습니다.
 

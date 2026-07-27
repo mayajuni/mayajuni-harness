@@ -158,16 +158,17 @@ def load_config() -> dict:
 
     Loading order (later entries win):
       1. Built-in defaults
-      2. Plugin install settings.json  (~/.hindsight/codex/settings.json)
+      2. Plugin install settings.json
       3. User config                   (~/.hindsight/codex.json)
       4. Environment variable overrides
+      5. Project secrets.json
 
     ~/.hindsight/codex.json is the recommended place to configure the
     plugin — stable across updates.
     """
     config = dict(DEFAULTS)
 
-    # 1. Plugin install settings.json (written by get-codex installer)
+    # 1. Plugin install settings.json
     install_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     _load_settings_file(os.path.join(install_root, "settings.json"), config)
 
@@ -182,6 +183,10 @@ def load_config() -> dict:
             cast_val = _cast_env(val, typ)
             if cast_val is not None:
                 config[key] = cast_val
+
+    # Project-local secrets take precedence over global environment values.
+    # The installer writes this file with mode 0600 and excludes it from Git.
+    _load_settings_file(os.path.join(install_root, "secrets.json"), config)
 
     return config
 

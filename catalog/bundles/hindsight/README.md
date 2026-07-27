@@ -7,6 +7,7 @@ Hindsight 프로젝트 번들은 Codex와 Claude Code가 현재 저장소에 관
 런타임은 `./.codex/hindsight`에 한 번만 설치하며 Codex와 Claude Code가 함께 사용합니다.
 
 - 공용 런타임과 설정: `./.codex/hindsight`
+- 프로젝트별 비밀 설정: `./.codex/hindsight/secrets.json`
 - Codex 훅: `./.codex/hooks.json`
 - Claude Code 훅: `./.claude/settings.json`
 - 설치 메타데이터: `./.codex/hindsight/.harness-install.json`
@@ -15,7 +16,7 @@ Claude를 선택해도 `./.claude/hindsight`는 생성되지 않습니다. Claud
 
 ## 사전 준비
 
-설치 대상은 Git 저장소여야 하며 Python 3가 필요합니다. 연결할 Hindsight API URL과 프로젝트에서 사용할 API 토큰을 준비하세요.
+설치 대상은 Git 저장소여야 하며 Python 3가 필요합니다. 연결할 Hindsight API URL과 프로젝트에서 사용할 API 토큰을 준비하세요. 프로젝트마다 서로 다른 API 토큰을 사용할 수 있습니다.
 
 토큰을 코드, `settings.json`, 셸 히스토리 또는 Git 저장소에 커밋하지 마세요.
 
@@ -37,40 +38,31 @@ export HINDSIGHT_API_URL='https://hindsight.example.com'
 
 ## API 토큰 설정
 
-토큰 값이 셸 히스토리에 남지 않도록 숨김 입력으로 받은 뒤 현재 터미널 세션에 설정합니다.
+질문형 설치에서는 API 토큰을 화면에 표시하지 않는 숨김 입력으로 받습니다. 입력한 토큰은 해당 프로젝트의 `./.codex/hindsight/secrets.json`에만 저장됩니다.
+
+- 파일 권한: 소유자만 읽고 쓸 수 있는 `0600`
+- Git 보호: 로컬 `.git/info/exclude`에 `/.codex/hindsight/secrets.json` 자동 등록
+- 공유 범위: 현재 프로젝트의 Codex와 Claude Code만 공동 사용
+- 일반 설정, 훅, 설치 메타데이터 및 로그에는 토큰을 기록하지 않음
+
+토큰 입력에서 Enter만 누르면 기존 프로젝트 토큰을 보존합니다. 기존 토큰이 없다면 저장하지 않고 실행 시점의 `HINDSIGHT_API_TOKEN` 환경변수를 사용합니다.
+
+질문할 수 없는 자동화 환경에서는 설치 명령을 실행할 때 `HINDSIGHT_API_TOKEN`을 설정하면 해당 프로젝트 비밀 파일에 저장합니다. 토큰을 명령행 옵션으로 전달하지 마세요.
 
 ```bash
 read -s "HINDSIGHT_API_TOKEN?Hindsight API token: "
 echo
 export HINDSIGHT_API_TOKEN
+mhs install hindsight \
+  --project \
+  --codex \
+  --claude \
+  --api-url=https://hindsight.example.com \
+  --bank-id=my-project
+unset HINDSIGHT_API_TOKEN
 ```
 
-토큰 값 자체를 출력하지 않고 설정 여부만 확인할 수 있습니다.
-
-```bash
-test -n "$HINDSIGHT_API_TOKEN" && echo "Hindsight token is set"
-```
-
-Claude Code처럼 터미널에서 실행하는 프로그램은 해당 터미널 환경을 상속합니다. 새 터미널에서도 사용하려면 사용하는 셸의 보안 정책에 맞게 환경 변수를 영구 설정하세요. 예를 들어 zsh 설정 파일에 직접 저장할 수 있지만, 평문 토큰 저장이 허용되는 환경인지 먼저 확인해야 합니다.
-
-macOS에서 Finder나 Dock으로 실행한 데스크톱 앱은 터미널의 `.zshrc`를 읽지 않을 수 있습니다. 현재 로그인 세션의 앱 환경에 토큰을 전달하려면 다음 명령을 실행한 뒤 앱을 완전히 종료하고 다시 실행합니다.
-
-```bash
-launchctl setenv HINDSIGHT_API_TOKEN "$HINDSIGHT_API_TOKEN"
-```
-
-등록 여부는 토큰 값을 노출하지 않고 확인합니다.
-
-```bash
-test -n "$(launchctl getenv HINDSIGHT_API_TOKEN)" \
-  && echo "Hindsight token is available to macOS apps"
-```
-
-현재 로그인 세션에서 제거하려면 다음을 실행합니다.
-
-```bash
-launchctl unsetenv HINDSIGHT_API_TOKEN
-```
+프로젝트 비밀 파일이 있으면 해당 토큰을 우선 사용합니다. 프로젝트 비밀 파일이 없는 경우에만 실행 환경의 `HINDSIGHT_API_TOKEN`을 전역 fallback으로 사용합니다.
 
 ## 설치
 
@@ -122,7 +114,7 @@ mhs install hindsight --project --codex --api-url=https://hindsight.example.com 
 mhs install hindsight --project --claude --api-url=https://hindsight.example.com --bank-id=my-project
 ```
 
-질문형 설치에서는 `mhs install`을 실행하고 `project`, `hindsight`, 사용할 도구를 선택한 뒤 API URL과 bank ID를 입력합니다. bank ID는 저장소 폴더명을 기본값으로 제안합니다.
+질문형 설치에서는 `mhs install`을 실행하고 `project`, `hindsight`, 사용할 도구를 선택한 뒤 API URL, bank ID, API 토큰을 차례로 입력합니다. bank ID는 저장소 폴더명을 기본값으로 제안하며 토큰은 화면에 표시되지 않습니다.
 
 ### bank ID
 
@@ -177,7 +169,21 @@ rg 'hindsight|HINDSIGHT_BANK_ID' .codex/hooks.json
 rg 'hindsight|HINDSIGHT_AGENT_NAME=claude-code' .claude/settings.json
 ```
 
-`HINDSIGHT_API_TOKEN`이 없는 환경에서는 설치는 완료되지만 recall과 retain 훅은 오류를 내지 않고 건너뜁니다. 토큰을 설정한 뒤 Codex 또는 Claude Code를 새로 시작하세요.
+토큰 값을 출력하지 않고 프로젝트 비밀 파일의 권한과 Git 제외 여부를 확인합니다.
+
+```bash
+test -s .codex/hindsight/secrets.json && echo "project token is stored"
+stat -f '%Sp %N' .codex/hindsight/secrets.json
+git check-ignore .codex/hindsight/secrets.json
+```
+
+정상 권한은 `-rw-------`이며 `git check-ignore` 결과에 비밀 파일 경로가 표시됩니다. 프로젝트 비밀 파일과 실행 환경의 `HINDSIGHT_API_TOKEN`이 모두 없으면 설치는 완료되지만 recall과 retain 훅은 오류 없이 건너뜁니다.
+
+토큰 로딩 우선순위:
+
+1. 프로젝트의 `./.codex/hindsight/secrets.json`
+2. 실행 환경의 `HINDSIGHT_API_TOKEN`
+3. 토큰이 없으면 훅 건너뜀
 
 ## 기본 저장 프로필
 
@@ -190,7 +196,7 @@ rg 'hindsight|HINDSIGHT_AGENT_NAME=claude-code' .claude/settings.json
 
 ## 업데이트와 재설치
 
-이미 `./.codex/hindsight`가 있다면 `--force`로 런타임을 갱신하고 훅을 다시 병합합니다.
+이미 `./.codex/hindsight`가 있다면 `--force`로 런타임을 갱신하고 훅을 다시 병합합니다. 토큰 입력에서 Enter를 누르면 기존 `secrets.json`과 파일 권한을 보존합니다. 질문할 수 없는 자동화 환경에서도 기존 프로젝트 토큰을 우선 보존하므로, 셸에 다른 프로젝트의 `HINDSIGHT_API_TOKEN`이 있더라도 재설치만으로 덮어쓰지 않습니다.
 
 ```bash
 mhs install hindsight \
@@ -227,7 +233,7 @@ mhs uninstall hindsight --project --codex --claude --yes
 mhs uninstall hindsight --project --claude --yes
 ```
 
-마지막 대상까지 제거하면 `./.codex/hindsight` 런타임도 함께 삭제됩니다. 기존 JSON 설정과 Hindsight가 아닌 다른 훅은 보존합니다.
+마지막 대상까지 제거하면 `./.codex/hindsight` 런타임과 프로젝트 API 토큰도 함께 삭제됩니다. 기존 JSON 설정과 Hindsight가 아닌 다른 훅은 보존합니다. `.git/info/exclude`의 비밀 파일 제외 규칙은 무해한 로컬 보호 규칙으로 남겨둡니다.
 
 ## 문제 해결
 
@@ -237,13 +243,18 @@ mhs uninstall hindsight --project --claude --yes
 
 ### 설치됐지만 기억을 조회하거나 저장하지 않음
 
-Codex 또는 Claude Code를 실행한 환경에 `HINDSIGHT_API_TOKEN`이 있는지 확인합니다.
+프로젝트 비밀 파일 또는 실행 환경에 토큰이 있는지 값 자체를 출력하지 않고 확인합니다.
 
 ```bash
-test -n "$HINDSIGHT_API_TOKEN" && echo "token set" || echo "token missing"
+test -s .codex/hindsight/secrets.json \
+  && echo "project token is stored" \
+  || echo "project token is missing"
+test -n "$HINDSIGHT_API_TOKEN" \
+  && echo "environment token is set" \
+  || echo "environment token is missing"
 ```
 
-데스크톱 앱이라면 `launchctl getenv HINDSIGHT_API_TOKEN`도 확인하고, 환경 변수를 설정한 후 앱을 완전히 종료했다가 다시 실행하세요.
+둘 중 하나라도 있으면 Codex 또는 Claude Code를 완전히 종료했다가 프로젝트에서 다시 실행하세요.
 
 ### `Target already exists` 오류
 
