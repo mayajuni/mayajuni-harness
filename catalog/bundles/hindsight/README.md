@@ -15,9 +15,25 @@ Claude를 선택해도 `./.claude/hindsight`는 생성되지 않습니다. Claud
 
 ## 사전 준비
 
-설치 대상은 Git 저장소여야 하며 Python 3가 필요합니다. Hindsight API 관리자로부터 프로젝트에서 사용할 API 토큰을 발급받아야 합니다.
+설치 대상은 Git 저장소여야 하며 Python 3가 필요합니다. 연결할 Hindsight API URL과 프로젝트에서 사용할 API 토큰을 준비하세요.
 
 토큰을 코드, `settings.json`, 셸 히스토리 또는 Git 저장소에 커밋하지 마세요.
+
+## API URL
+
+설치할 때 `--api-url`로 Hindsight API의 기본 URL을 입력합니다. 마지막 `/`는 자동으로 제거되며 `http://` 또는 `https://` URL만 허용됩니다.
+
+```bash
+--api-url=https://hindsight.example.com
+```
+
+입력한 URL은 설치된 `./.codex/hindsight/settings.json`의 `hindsightApiUrl`에 저장됩니다. 설치 대상 저장소가 공개되어 있고 API URL도 공개하고 싶지 않다면 이 설정 파일을 커밋하지 마세요.
+
+실행 환경의 `HINDSIGHT_API_URL` 환경 변수로 설치된 설정값을 덮어쓸 수도 있습니다.
+
+```bash
+export HINDSIGHT_API_URL='https://hindsight.example.com'
+```
 
 ## API 토큰 설정
 
@@ -71,6 +87,7 @@ mhs install hindsight \
   --project \
   --codex \
   --claude \
+  --api-url=https://hindsight.example.com \
   --bank-id=my-project
 ```
 
@@ -82,6 +99,7 @@ node /path/to/mayajuni-harness/bin/harness-skills.js \
   --project \
   --codex \
   --claude \
+  --api-url=https://hindsight.example.com \
   --bank-id=my-project
 ```
 
@@ -93,17 +111,18 @@ node /Users/mayajuni/Projects/dan/harness/bin/harness-skills.js \
   --project \
   --codex \
   --claude \
+  --api-url=https://hindsight.example.com \
   --bank-id=my-project
 ```
 
 Codex 또는 Claude Code만 사용한다면 필요하지 않은 옵션을 제외합니다.
 
 ```bash
-mhs install hindsight --project --codex --bank-id=my-project
-mhs install hindsight --project --claude --bank-id=my-project
+mhs install hindsight --project --codex --api-url=https://hindsight.example.com --bank-id=my-project
+mhs install hindsight --project --claude --api-url=https://hindsight.example.com --bank-id=my-project
 ```
 
-질문형 설치에서는 `mhs install`을 실행하고 `project`, `hindsight`, 사용할 도구를 선택합니다. bank ID는 저장소 폴더명을 기본값으로 제안합니다.
+질문형 설치에서는 `mhs install`을 실행하고 `project`, `hindsight`, 사용할 도구를 선택한 뒤 API URL과 bank ID를 입력합니다. bank ID는 저장소 폴더명을 기본값으로 제안합니다.
 
 ### bank ID
 
@@ -142,6 +161,7 @@ Codex와 Claude Code를 모두 선택했다면 `targets`에 두 값이 표시되
 
 ```bash
 jq '{
+  hindsightApiUrl,
   bankId,
   autoRecall,
   autoRetain,
@@ -177,6 +197,7 @@ mhs install hindsight \
   --project \
   --codex \
   --claude \
+  --api-url=https://hindsight.example.com \
   --bank-id=my-project \
   --force
 ```
@@ -187,6 +208,7 @@ mhs install hindsight \
 mhs install hindsight \
   --project \
   --claude \
+  --api-url=https://hindsight.example.com \
   --bank-id=my-project \
   --force
 ```
@@ -225,7 +247,15 @@ test -n "$HINDSIGHT_API_TOKEN" && echo "token set" || echo "token missing"
 
 ### `Target already exists` 오류
 
-기존 설치를 갱신하려면 같은 bank ID와 `--force`를 사용합니다.
+기존 설치를 갱신하려면 같은 API URL 및 bank ID와 `--force`를 사용합니다.
+
+### API URL 오류
+
+질문 없이 설치할 때는 `--api-url`이 필수입니다. 프로토콜을 포함한 전체 URL을 입력하고 URL 안에 아이디나 비밀번호를 넣지 마세요.
+
+```bash
+--api-url=https://hindsight.example.com
+```
 
 ### `hindsight project install must be run inside a Git repository` 오류
 

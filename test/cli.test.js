@@ -257,7 +257,7 @@ test("claude project scope defaults to .claude/skills", async () => {
   }
 });
 
-test("hindsight project bundle installs both hook targets with an explicit bank", async () => {
+test("hindsight project bundle installs both hook targets with an explicit API URL and bank", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
   try {
     await initGitRepo(tmp);
@@ -298,6 +298,7 @@ test("hindsight project bundle installs both hook targets with an explicit bank"
         "--project",
         "--codex",
         "--claude",
+        "--api-url=https://hindsight.example.com/",
         "--bank-id=test-bank",
       ],
       { cwd: tmp },
@@ -316,6 +317,10 @@ test("hindsight project bundle installs both hook targets with an explicit bank"
     );
     assert.match(installedReadme, /HINDSIGHT_API_TOKEN/);
     assert.match(installedReadme, /\.claude\/settings\.json/);
+    assert.equal(
+      settings.hindsightApiUrl,
+      "https://hindsight.example.com",
+    );
     assert.equal(settings.bankId, "test-bank");
     assert.equal(settings.autoRecall, true);
     assert.equal(settings.autoRetain, true);
@@ -338,6 +343,7 @@ test("hindsight project bundle installs both hook targets with an explicit bank"
     assert.equal(codexHooks.description, "keep me");
     assert.equal(countHindsightHandlers(codexHooks), 3);
     assert.match(JSON.stringify(codexHooks), /HINDSIGHT_BANK_ID=test-bank/);
+    assert.doesNotMatch(JSON.stringify(codexHooks), /HINDSIGHT_API_URL=/);
     assert.equal(claudeSettings.permissions.allow[0], "Bash(git status)");
     assert.equal(countHindsightHandlers(claudeSettings), 4);
     assert.match(
@@ -352,6 +358,7 @@ test("hindsight project bundle installs both hook targets with an explicit bank"
         "--project",
         "--codex",
         "--claude",
+        "--api-url=https://hindsight.example.com",
         "--bank-id=test-bank",
         "--force",
       ],
@@ -425,9 +432,16 @@ test("hindsight project bundle installs both hook targets with an explicit bank"
   }
 });
 
-test("hindsight requires project scope and a bank ID in non-interactive mode", async () => {
+test("hindsight requires project scope, an API URL, and a bank ID in non-interactive mode", async () => {
   await assert.rejects(
-    runCli(["install", "hindsight", "--global", "--codex", "--bank-id=test"]),
+    runCli([
+      "install",
+      "hindsight",
+      "--global",
+      "--codex",
+      "--api-url=https://hindsight.example.com",
+      "--bank-id=test",
+    ]),
     (err) => {
       assert.equal(err.code, 1);
       assert.match(err.stderr, /only supports scope: project/);
@@ -439,10 +453,56 @@ test("hindsight requires project scope and a bank ID in non-interactive mode", a
   try {
     await initGitRepo(tmp);
     await assert.rejects(
-      runCli(["install", "hindsight", "--project", "--codex"], { cwd: tmp }),
+      runCli(
+        [
+          "install",
+          "hindsight",
+          "--project",
+          "--codex",
+          "--api-url=https://hindsight.example.com",
+        ],
+        { cwd: tmp },
+      ),
       (err) => {
         assert.equal(err.code, 1);
         assert.match(err.stderr, /requires --bank-id/);
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      runCli(
+        [
+          "install",
+          "hindsight",
+          "--project",
+          "--codex",
+          "--bank-id=test-bank",
+        ],
+        { cwd: tmp },
+      ),
+      (err) => {
+        assert.equal(err.code, 1);
+        assert.match(err.stderr, /requires --api-url/);
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      runCli(
+        [
+          "install",
+          "hindsight",
+          "--project",
+          "--codex",
+          "--api-url=not-a-url",
+          "--bank-id=test-bank",
+        ],
+        { cwd: tmp },
+      ),
+      (err) => {
+        assert.equal(err.code, 1);
+        assert.match(err.stderr, /Invalid Hindsight API URL/);
         return true;
       },
     );

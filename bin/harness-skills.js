@@ -11,7 +11,6 @@ const MANIFEST_PATH = path.join(REPO_ROOT, "skills.json");
 const HINDSIGHT_INSTALLER = "hindsight-project";
 const HINDSIGHT_INSTALL_DIR = path.join(".codex", "hindsight");
 const HINDSIGHT_HOOK_MARKER = "/.codex/hindsight/scripts/";
-const HINDSIGHT_API_URL = "https://hindsight-api.dongjun.win";
 const HINDSIGHT_RUNTIME_FILES = [
   "README.md",
   "scripts/session_start.py",
@@ -114,6 +113,9 @@ async function runInstall(args) {
     (skillName) =>
       manifest.skills[skillName]?.installer === HINDSIGHT_INSTALLER,
   );
+  const hindsightApiUrl = hindsightSelected
+    ? await resolveHindsightApiUrl(options.flags)
+    : null;
   const hindsightBankId = hindsightSelected
     ? await resolveHindsightBankId(options.flags)
     : null;
@@ -136,6 +138,7 @@ async function runInstall(args) {
         targetNames,
         scopeName,
         bankId: hindsightBankId,
+        apiUrl: hindsightApiUrl,
         flags: options.flags,
       });
       continue;
@@ -595,6 +598,52 @@ function validateHindsightBankId(bankId) {
   return bankId;
 }
 
+async function resolveHindsightApiUrl(flags) {
+  const explicit = flags["api-url"];
+  if (explicit !== undefined && explicit !== true) {
+    return validateHindsightApiUrl(String(explicit));
+  }
+  if (explicit === true) {
+    throw new Error(
+      "--api-url requires a value, for example --api-url=https://hindsight.example.com.",
+    );
+  }
+
+  if (!canPrompt()) {
+    throw new Error(
+      "hindsight requires --api-url in non-interactive mode, for example --api-url=https://hindsight.example.com.",
+    );
+  }
+
+  const answer = await askInput("Hindsight API URL:");
+  return validateHindsightApiUrl(answer);
+}
+
+function validateHindsightApiUrl(apiUrl) {
+  const normalized = apiUrl.trim().replace(/\/+$/, "");
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error(
+      "Invalid Hindsight API URL. Enter a complete http:// or https:// URL.",
+    );
+  }
+
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error(
+      "Invalid Hindsight API URL. Use http:// or https:// without embedded credentials.",
+    );
+  }
+
+  return normalized;
+}
+
 function suggestHindsightBankId(projectRoot) {
   return (
     path
@@ -627,6 +676,7 @@ function installHindsightBundle({
   targetNames,
   scopeName,
   bankId,
+  apiUrl,
   flags,
 }) {
   assertSupportedScope(skillName, skill, scopeName);
@@ -648,7 +698,7 @@ function installHindsightBundle({
   if (flags["dry-run"]) {
     for (const targetName of targetNames) {
       console.log(
-        `[dry-run] project ${skillName}:${targetName} bank=${bankId} -> ${installDir}`,
+        `[dry-run] project ${skillName}:${targetName} api=${apiUrl} bank=${bankId} -> ${installDir}`,
       );
     }
     return;
@@ -688,7 +738,7 @@ function installHindsightBundle({
   );
   writeJsonFile(
     path.join(installDir, "settings.json"),
-    buildHindsightSettings(bankId, projectRoot),
+    buildHindsightSettings(apiUrl, bankId, projectRoot),
   );
   writeJsonFile(metadataPath, {
     installer: HINDSIGHT_INSTALLER,
@@ -750,11 +800,11 @@ function uninstallHindsightBundle({ targetNames, scopeName }) {
   });
 }
 
-function buildHindsightSettings(bankId, projectRoot) {
+function buildHindsightSettings(apiUrl, bankId, projectRoot) {
   const projectName = path.basename(projectRoot);
   return {
     version: "0.3.3",
-    hindsightApiUrl: HINDSIGHT_API_URL,
+    hindsightApiUrl: apiUrl,
     bankId,
     bankMission: `You are a coding assistant working on the ${projectName} repository. Focus on project conventions, architecture, debugging outcomes, deployment workflows, provider integrations, recurring pitfalls, and user preferences that help future work in this repository.`,
     retainMission: `Extract durable technical knowledge for the ${projectName} repository: architecture decisions, code paths, debugging solutions, branch/deploy workflows, test commands, failed approaches, successful fixes, provider/API constraints, and user preferences. Ignore greetings, transient logs, secrets, credentials, and noisy one-off command output.`,
@@ -896,7 +946,7 @@ function buildHindsightHooks(targetName, bankId) {
   const agentPrefix =
     targetName === "claude" ? "HINDSIGHT_AGENT_NAME=claude-code " : "";
   const command = (scriptName) =>
-    `test -n "$HINDSIGHT_API_TOKEN" || exit 0; PYTHONDONTWRITEBYTECODE=1 HINDSIGHT_API_URL=${HINDSIGHT_API_URL} HINDSIGHT_BANK_ID=${bankId} HINDSIGHT_DYNAMIC_BANK_ID=false ${agentPrefix}python3 "$(git rev-parse --show-toplevel)/.codex/hindsight/scripts/${scriptName}"`;
+    `test -n "$HINDSIGHT_API_TOKEN" || exit 0; PYTHONDONTWRITEBYTECODE=1 HINDSIGHT_BANK_ID=${bankId} HINDSIGHT_DYNAMIC_BANK_ID=false ${agentPrefix}python3 "$(git rev-parse --show-toplevel)/.codex/hindsight/scripts/${scriptName}"`;
 
   const hooks = {
     SessionStart: [
@@ -1125,7 +1175,7 @@ mhs
 
 Commands:
   mhs list [--json]
-  mhs install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--bank-id=id] [--dry-run] [--force]
+  mhs install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--api-url=url] [--bank-id=id] [--dry-run] [--force]
   mhs uninstall [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--dry-run] [--yes]
   mhs validate [skill...] [--codex] [--claude]
 
@@ -1135,8 +1185,8 @@ Environment:
   HARNESS_PROJECT_SKILLS_DIR Override project install root (default: native project paths)
 
 Hindsight:
-  Project-only hook bundle. Interactive install prompts for a bank ID.
-  Non-interactive example: mhs install hindsight --project --codex --claude --bank-id=my-project
+  Project-only hook bundle. Interactive install prompts for an API URL and bank ID.
+  Non-interactive example: mhs install hindsight --project --codex --claude --api-url=https://hindsight.example.com --bank-id=my-project
 `);
   process.exitCode = exitCode;
 }

@@ -100,7 +100,7 @@ mhs install media-highlight --codex
 mhs install blog-publish --codex
 mhs install blog-write --codex
 mhs install api-site-mapper --codex
-mhs install hindsight --project --codex --claude --bank-id=my-project
+mhs install hindsight --project --codex --claude --api-url=https://hindsight.example.com --bank-id=my-project
 ```
 
 프로젝트 스코프로 설치:
@@ -123,7 +123,7 @@ mhs uninstall --all --project --yes
 1. `global`인지 `project`인지
 2. 설치할 스킬이 무엇인지, 혹은 `all`인지
 3. 대상 툴이 무엇인지, 혹은 `all`인지
-4. `hindsight`를 선택했다면 프로젝트에서 사용할 bank ID
+4. `hindsight`를 선택했다면 연결할 API URL과 프로젝트에서 사용할 bank ID
 
 `mhs uninstall`도 같은 방식으로 `scope`, `skills`, `tools`를 묻고 마지막에 삭제 확인을 받습니다. 자동화가 필요하면 `--yes`를 쓸 수 있습니다.
 
@@ -134,7 +134,7 @@ mhs uninstall --all --project --yes
 `hindsight`는 일반 스킬이 아니라 `project` scope 전용 자동 메모리 훅 번들입니다. Codex와 Claude Code의 프롬프트 제출 시 관련 기억을 자동 조회하고, 응답 종료 시 대화를 증분 저장합니다. MCP 설정은 설치하지 않습니다.
 
 ```bash
-mhs install hindsight --project --codex --claude --bank-id=my-project
+mhs install hindsight --project --codex --claude --api-url=https://hindsight.example.com --bank-id=my-project
 ```
 
 공용 런타임은 `./.codex/hindsight`에 한 번만 설치되고 Codex와 Claude Code가 함께 사용합니다. 인증 키 설정, 로컬 실행, 설치 확인, 업데이트, 삭제 및 문제 해결은 [Hindsight 상세 설치 및 설정 안내](catalog/bundles/hindsight/README.md)를 참고하세요. 이 안내 문서는 설치 후 `./.codex/hindsight/README.md`에서도 확인할 수 있습니다.
