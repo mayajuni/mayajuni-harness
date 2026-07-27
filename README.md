@@ -1,6 +1,6 @@
 # mayajuni-harness
 
-`@mayajuni/harness`는 여러 스킬을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`, `video-highlight`, `media-highlight`, `blog-publish`, `blog-write`, `api-site-mapper`는 `codex`, `claude` 2타깃을 지원합니다.
+`@mayajuni/harness`는 여러 스킬과 프로젝트 번들을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`, `video-highlight`, `media-highlight`, `blog-publish`, `blog-write`, `api-site-mapper`, `hindsight`는 `codex`, `claude` 2타깃을 지원합니다.
 
 기본 사용은 질문형 CLI입니다. 옵션을 생략하면 `scope`, `skills`, `tools`를 순서대로 물어봅니다.
 
@@ -16,7 +16,12 @@
 .
 ├── bin/harness-skills.js
 ├── skills.json
-└── catalog/skills/
+└── catalog/
+    ├── bundles/
+    │   └── hindsight/
+    │       ├── scripts/
+    │       └── tests/
+    └── skills/
     ├── mj-live-browse/
     │   ├── SKILL.md
     │   └── references/
@@ -94,6 +99,7 @@ mhs install media-highlight --codex
 mhs install blog-publish --codex
 mhs install blog-write --codex
 mhs install api-site-mapper --codex
+mhs install hindsight --project --codex --claude --bank-id=my-project
 ```
 
 프로젝트 스코프로 설치:
@@ -116,10 +122,43 @@ mhs uninstall --all --project --yes
 1. `global`인지 `project`인지
 2. 설치할 스킬이 무엇인지, 혹은 `all`인지
 3. 대상 툴이 무엇인지, 혹은 `all`인지
+4. `hindsight`를 선택했다면 프로젝트에서 사용할 bank ID
 
 `mhs uninstall`도 같은 방식으로 `scope`, `skills`, `tools`를 묻고 마지막에 삭제 확인을 받습니다. 자동화가 필요하면 `--yes`를 쓸 수 있습니다.
 
 스킬과 툴은 멀티 선택이 가능합니다. 자동화할 때는 `--all`, `--scope`, `--codex`, `--claude` 같은 옵션을 쓰면 됩니다.
+
+## Hindsight 프로젝트 번들
+
+`hindsight`는 일반 스킬이 아니라 `project` scope 전용 자동 메모리 훅 번들입니다. Codex와 Claude Code의 프롬프트 제출 시 관련 기억을 자동 조회하고, 응답 종료 시 대화를 증분 저장합니다. MCP 설정은 설치하지 않습니다.
+
+질문형 설치에서는 bank ID를 입력받습니다. 저장소 폴더명을 기본값으로 제안하므로 그대로 쓰려면 Enter를 누르면 됩니다.
+
+```bash
+mhs install
+```
+
+자동화하거나 질문 없이 설치할 때는 bank ID를 명시해야 합니다.
+
+```bash
+mhs install hindsight --project --codex --claude --bank-id=my-project
+```
+
+설치 결과:
+
+- 공용 런타임과 프로젝트 설정: `./.codex/hindsight`
+- Codex 훅: `./.codex/hooks.json`에 Hindsight 훅만 병합
+- Claude Code 훅: `./.claude/settings.json`에 Hindsight 훅만 병합
+- 인증: 기존 `HINDSIGHT_API_TOKEN` 환경 변수 사용
+
+기존 JSON 설정과 다른 훅은 보존합니다. 재설치 또는 런타임 갱신에는 `--force`를 사용합니다.
+
+```bash
+mhs install hindsight --project --codex --claude --bank-id=my-project --force
+mhs uninstall hindsight --project --codex --claude --yes
+```
+
+현재 기본 프로필은 Codex가 3턴마다 증분 저장하고, Claude Code가 5턴마다 증분 저장한 뒤 세션 종료 시 한 번 더 최종 저장합니다.
 
 ## 권장 워크플로
 
@@ -145,6 +184,7 @@ mhs validate mj-live-browse --codex
 - Claude global: `~/.claude/skills`
 - Codex project: `./.agents/skills`
 - Claude project: `./.claude/skills`
+- Hindsight project runtime: `./.codex/hindsight`
 
 `project` scope는 각 도구가 실제로 읽는 기본 프로젝트 경로에 맞춰 설치합니다. 더 이상 `./.harness/skills/<tool>` 같은 별도 관리 경로를 기본값으로 쓰지 않습니다.
 

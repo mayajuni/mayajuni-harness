@@ -20,6 +20,21 @@ function runCli(args, options = {}) {
   });
 }
 
+async function initGitRepo(dir) {
+  await execFileAsync("git", ["init", "-q"], { cwd: dir });
+}
+
+function countHindsightHandlers(settings) {
+  return Object.values(settings.hooks ?? {})
+    .flat()
+    .flatMap((group) => group.hooks ?? [])
+    .filter(
+      (handler) =>
+        typeof handler.command === "string" &&
+        handler.command.includes("/.codex/hindsight/scripts/"),
+    ).length;
+}
+
 test("list --json returns manifest entries", async () => {
   const { stdout } = await runCli(["list", "--json"]);
   const parsed = JSON.parse(stdout);
@@ -236,6 +251,194 @@ test("claude project scope defaults to .claude/skills", async () => {
       new RegExp(
         `${path.join(tmp, ".claude", "skills", "mj-live-browse").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
       ),
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("hindsight project bundle installs both hook targets with an explicit bank", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  try {
+    await initGitRepo(tmp);
+    fs.mkdirSync(path.join(tmp, ".codex"), { recursive: true });
+    fs.mkdirSync(path.join(tmp, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, ".codex", "hooks.json"),
+      JSON.stringify({
+        description: "keep me",
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "Bash",
+              hooks: [{ type: "command", command: "echo existing-codex" }],
+            },
+          ],
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, ".claude", "settings.json"),
+      JSON.stringify({
+        permissions: { allow: ["Bash(git status)"] },
+        hooks: {
+          Stop: [
+            {
+              hooks: [{ type: "command", command: "echo existing-claude" }],
+            },
+          ],
+        },
+      }),
+    );
+
+    const { stdout } = await runCli(
+      [
+        "install",
+        "hindsight",
+        "--project",
+        "--codex",
+        "--claude",
+        "--bank-id=test-bank",
+      ],
+      { cwd: tmp },
+    );
+    assert.match(stdout, /Installed hindsight:codex/);
+    assert.match(stdout, /Installed hindsight:claude/);
+    assert.match(stdout, /bank=test-bank/);
+
+    const installDir = path.join(tmp, ".codex", "hindsight");
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(installDir, "settings.json"), "utf8"),
+    );
+    assert.equal(settings.bankId, "test-bank");
+    assert.equal(settings.autoRecall, true);
+    assert.equal(settings.autoRetain, true);
+    assert.equal(settings.codex.retainMode, "incremental");
+    assert.equal(settings.codex.retainEveryNTurns, 3);
+    assert.equal(settings.claudeCode.retainEveryNTurns, 5);
+    assert.equal(settings.claudeCode.sessionEndFinalRetain, true);
+    assert.equal(
+      fs.existsSync(path.join(tmp, ".codex", "config.toml")),
+      false,
+      "MCP/config.toml should not be installed",
+    );
+
+    const codexHooksPath = path.join(tmp, ".codex", "hooks.json");
+    const claudeSettingsPath = path.join(tmp, ".claude", "settings.json");
+    let codexHooks = JSON.parse(fs.readFileSync(codexHooksPath, "utf8"));
+    let claudeSettings = JSON.parse(
+      fs.readFileSync(claudeSettingsPath, "utf8"),
+    );
+    assert.equal(codexHooks.description, "keep me");
+    assert.equal(countHindsightHandlers(codexHooks), 3);
+    assert.match(JSON.stringify(codexHooks), /HINDSIGHT_BANK_ID=test-bank/);
+    assert.equal(claudeSettings.permissions.allow[0], "Bash(git status)");
+    assert.equal(countHindsightHandlers(claudeSettings), 4);
+    assert.match(
+      JSON.stringify(claudeSettings),
+      /HINDSIGHT_AGENT_NAME=claude-code/,
+    );
+
+    await runCli(
+      [
+        "install",
+        "hindsight",
+        "--project",
+        "--codex",
+        "--claude",
+        "--bank-id=test-bank",
+        "--force",
+      ],
+      { cwd: tmp },
+    );
+    codexHooks = JSON.parse(fs.readFileSync(codexHooksPath, "utf8"));
+    claudeSettings = JSON.parse(
+      fs.readFileSync(claudeSettingsPath, "utf8"),
+    );
+    assert.equal(countHindsightHandlers(codexHooks), 3);
+    assert.equal(countHindsightHandlers(claudeSettings), 4);
+
+    const bundledTests = path.join(
+      REPO_ROOT,
+      "catalog",
+      "bundles",
+      "hindsight",
+      "tests",
+    );
+    fs.cpSync(bundledTests, path.join(installDir, "tests"), {
+      recursive: true,
+    });
+    const { stderr: pythonStderr } = await execFileAsync(
+      "python3",
+      [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        path.join(installDir, "tests"),
+        "-v",
+      ],
+      {
+        cwd: tmp,
+        env: {
+          ...process.env,
+          PYTHONDONTWRITEBYTECODE: "1",
+        },
+      },
+    );
+    assert.match(pythonStderr, /Ran 17 tests/);
+    assert.match(pythonStderr, /OK/);
+
+    await runCli(
+      ["uninstall", "hindsight", "--project", "--codex", "--yes"],
+      { cwd: tmp },
+    );
+    assert.equal(fs.existsSync(installDir), true);
+    codexHooks = JSON.parse(fs.readFileSync(codexHooksPath, "utf8"));
+    claudeSettings = JSON.parse(
+      fs.readFileSync(claudeSettingsPath, "utf8"),
+    );
+    assert.equal(countHindsightHandlers(codexHooks), 0);
+    assert.equal(countHindsightHandlers(claudeSettings), 4);
+
+    await runCli(
+      ["uninstall", "hindsight", "--project", "--claude", "--yes"],
+      { cwd: tmp },
+    );
+    assert.equal(fs.existsSync(installDir), false);
+    claudeSettings = JSON.parse(
+      fs.readFileSync(claudeSettingsPath, "utf8"),
+    );
+    assert.equal(countHindsightHandlers(claudeSettings), 0);
+    assert.equal(
+      claudeSettings.hooks.Stop[0].hooks[0].command,
+      "echo existing-claude",
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("hindsight requires project scope and a bank ID in non-interactive mode", async () => {
+  await assert.rejects(
+    runCli(["install", "hindsight", "--global", "--codex", "--bank-id=test"]),
+    (err) => {
+      assert.equal(err.code, 1);
+      assert.match(err.stderr, /only supports scope: project/);
+      return true;
+    },
+  );
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  try {
+    await initGitRepo(tmp);
+    await assert.rejects(
+      runCli(["install", "hindsight", "--project", "--codex"], { cwd: tmp }),
+      (err) => {
+        assert.equal(err.code, 1);
+        assert.match(err.stderr, /requires --bank-id/);
+        return true;
+      },
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

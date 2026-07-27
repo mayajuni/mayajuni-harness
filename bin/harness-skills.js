@@ -8,6 +8,23 @@ import readline from "node:readline/promises";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const MANIFEST_PATH = path.join(REPO_ROOT, "skills.json");
+const HINDSIGHT_INSTALLER = "hindsight-project";
+const HINDSIGHT_INSTALL_DIR = path.join(".codex", "hindsight");
+const HINDSIGHT_HOOK_MARKER = "/.codex/hindsight/scripts/";
+const HINDSIGHT_API_URL = "https://hindsight-api.dongjun.win";
+const HINDSIGHT_RUNTIME_FILES = [
+  "scripts/session_start.py",
+  "scripts/recall.py",
+  "scripts/retain.py",
+  "scripts/lib/__init__.py",
+  "scripts/lib/bank.py",
+  "scripts/lib/client.py",
+  "scripts/lib/config.py",
+  "scripts/lib/content.py",
+  "scripts/lib/daemon.py",
+  "scripts/lib/llm.py",
+  "scripts/lib/state.py",
+];
 
 const TARGETS = {
   codex: {
@@ -92,6 +109,13 @@ async function runInstall(args) {
   const manifest = loadManifest();
   const selection = await resolveSelection(manifest, options);
   const { selectedSkillNames, selectedTargets, scopeName } = selection;
+  const hindsightSelected = selectedSkillNames.some(
+    (skillName) =>
+      manifest.skills[skillName]?.installer === HINDSIGHT_INSTALLER,
+  );
+  const hindsightBankId = hindsightSelected
+    ? await resolveHindsightBankId(options.flags)
+    : null;
 
   for (const skillName of selectedSkillNames) {
     const skill = manifest.skills[skillName];
@@ -103,6 +127,18 @@ async function runInstall(args) {
       selectedTargets.length > 0
         ? selectedTargets
         : Object.keys(skill.targets);
+
+    if (skill.installer === HINDSIGHT_INSTALLER) {
+      installHindsightBundle({
+        skillName,
+        skill,
+        targetNames,
+        scopeName,
+        bankId: hindsightBankId,
+        flags: options.flags,
+      });
+      continue;
+    }
 
     for (const targetName of targetNames) {
       const target = skill.targets[targetName];
@@ -123,7 +159,7 @@ async function runInstall(args) {
       }
 
       ensureDirectory(installRoot);
-      assertValidTargetSource(sourceDir, targetName);
+      assertValidTargetSource(sourceDir, targetName, skill);
 
       if (fs.existsSync(installDir)) {
         if (!options.flags.force) {
@@ -165,6 +201,24 @@ async function runUninstall(args) {
         ? selectedTargets
         : Object.keys(skill.targets);
 
+    if (skill.installer === HINDSIGHT_INSTALLER) {
+      assertSupportedScope(skillName, skill, scopeName);
+      const projectRoot = findProjectRoot(process.cwd());
+      for (const targetName of targetNames) {
+        if (!skill.targets[targetName]) {
+          console.warn(`Skipping ${skillName}: no ${targetName} target.`);
+          continue;
+        }
+        targetsToRemove.push({
+          skillName,
+          targetName,
+          installDir: path.join(projectRoot, HINDSIGHT_INSTALL_DIR),
+          installer: HINDSIGHT_INSTALLER,
+        });
+      }
+      continue;
+    }
+
     for (const targetName of targetNames) {
       const target = skill.targets[targetName];
       if (!target) {
@@ -197,7 +251,9 @@ async function runUninstall(args) {
   }
 
   const shouldProceed =
-    options.flags.yes || !(canPrompt()) || (await confirmUninstall(targetsToRemove, scopeName));
+    options.flags.yes ||
+    !canPrompt() ||
+    (await confirmUninstall(targetsToRemove, scopeName));
 
   if (!shouldProceed) {
     console.log("Uninstall cancelled.");
@@ -205,6 +261,9 @@ async function runUninstall(args) {
   }
 
   for (const target of targetsToRemove) {
+    if (target.installer === HINDSIGHT_INSTALLER) {
+      continue;
+    }
     if (!fs.existsSync(target.installDir)) {
       console.warn(`Skipping missing install: ${target.installDir}`);
       continue;
@@ -214,6 +273,16 @@ async function runUninstall(args) {
     console.log(
       `Removed ${target.skillName}:${target.targetName} [${scopeName}] -> ${target.installDir}`,
     );
+  }
+
+  const hindsightTargets = targetsToRemove
+    .filter((target) => target.installer === HINDSIGHT_INSTALLER)
+    .map((target) => target.targetName);
+  if (hindsightTargets.length > 0) {
+    uninstallHindsightBundle({
+      targetNames: hindsightTargets,
+      scopeName,
+    });
   }
 }
 
@@ -226,15 +295,27 @@ async function resolveSelection(manifest, options) {
   if (requestedSkills.length > 0) {
     selectedSkillNames = requestedSkills;
   } else if (options.flags.all) {
-    selectedSkillNames = Object.keys(manifest.skills);
+    selectedSkillNames = Object.keys(manifest.skills).filter((skillName) =>
+      supportsScope(manifest.skills[skillName], scopeName),
+    );
   } else if (interactive) {
-    selectedSkillNames = await promptForSkills(manifest);
+    selectedSkillNames = await promptForSkills(manifest, scopeName);
   } else {
-    selectedSkillNames = Object.keys(manifest.skills);
+    selectedSkillNames = Object.keys(manifest.skills).filter((skillName) =>
+      supportsScope(manifest.skills[skillName], scopeName),
+    );
   }
 
   if (selectedSkillNames.length === 0) {
     throw new Error("No skills selected.");
+  }
+
+  for (const skillName of selectedSkillNames) {
+    const skill = manifest.skills[skillName];
+    if (!skill) {
+      throw new Error(`Unknown skill: ${skillName}`);
+    }
+    assertSupportedScope(skillName, skill, scopeName);
   }
 
   let selectedTargets = selectTargets(options.flags);
@@ -303,7 +384,7 @@ function runValidate(args) {
       const sourceDir = path.join(REPO_ROOT, target.source);
 
       try {
-        assertValidTargetSource(sourceDir, targetName);
+        assertValidTargetSource(sourceDir, targetName, skill);
         console.log(`OK ${skillName}:${targetName}`);
       } catch (error) {
         console.error(
@@ -443,7 +524,7 @@ function copyDirectory(sourceDir, targetDir) {
   fs.cpSync(sourceDir, targetDir, { recursive: true });
 }
 
-function assertValidTargetSource(sourceDir, targetName) {
+function assertValidTargetSource(sourceDir, targetName, skill) {
   const target = TARGETS[targetName];
   if (!target) {
     throw new Error(`Unsupported target: ${targetName}`);
@@ -453,18 +534,449 @@ function assertValidTargetSource(sourceDir, targetName) {
     throw new Error(`Missing source directory: ${sourceDir}`);
   }
 
+  if (skill?.installer === HINDSIGHT_INSTALLER) {
+    for (const relativePath of HINDSIGHT_RUNTIME_FILES) {
+      const runtimePath = path.join(sourceDir, relativePath);
+      if (!fs.existsSync(runtimePath)) {
+        throw new Error(`Missing required runtime file: ${runtimePath}`);
+      }
+    }
+    return;
+  }
+
   const entryPath = path.join(sourceDir, target.entryFile);
   if (!fs.existsSync(entryPath)) {
     throw new Error(`Missing required entry file: ${entryPath}`);
   }
 }
 
+function supportsScope(skill, scopeName) {
+  const scopes = skill.scopes;
+  return !Array.isArray(scopes) || scopes.includes(scopeName);
+}
+
+function assertSupportedScope(skillName, skill, scopeName) {
+  if (supportsScope(skill, scopeName)) {
+    return;
+  }
+
+  throw new Error(
+    `${skillName} only supports scope: ${skill.scopes.join(", ")}. Re-run with --project.`,
+  );
+}
+
+async function resolveHindsightBankId(flags) {
+  const explicit = flags["bank-id"];
+  if (explicit !== undefined && explicit !== true) {
+    return validateHindsightBankId(String(explicit));
+  }
+  if (explicit === true) {
+    throw new Error("--bank-id requires a value, for example --bank-id=my-project.");
+  }
+
+  if (!canPrompt()) {
+    throw new Error(
+      "hindsight requires --bank-id in non-interactive mode, for example --bank-id=my-project.",
+    );
+  }
+
+  const suggested = suggestHindsightBankId(findProjectRoot(process.cwd()));
+  const answer = await askInput(`Hindsight bank ID [${suggested}]:`);
+  return validateHindsightBankId(answer || suggested);
+}
+
+function validateHindsightBankId(bankId) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(bankId)) {
+    throw new Error(
+      "Invalid Hindsight bank ID. Use 1-128 letters, numbers, dots, underscores, colons, or hyphens; start with a letter or number.",
+    );
+  }
+  return bankId;
+}
+
+function suggestHindsightBankId(projectRoot) {
+  return (
+    path
+      .basename(projectRoot)
+      .toLowerCase()
+      .replace(/[^a-z0-9._:-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "project-memory"
+  );
+}
+
+function findProjectRoot(startDir) {
+  let current = path.resolve(startDir);
+  while (true) {
+    if (fs.existsSync(path.join(current, ".git"))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new Error(
+        "hindsight project install must be run inside a Git repository.",
+      );
+    }
+    current = parent;
+  }
+}
+
+function installHindsightBundle({
+  skillName,
+  skill,
+  targetNames,
+  scopeName,
+  bankId,
+  flags,
+}) {
+  assertSupportedScope(skillName, skill, scopeName);
+  const projectRoot = findProjectRoot(process.cwd());
+  const installDir = path.join(projectRoot, HINDSIGHT_INSTALL_DIR);
+  const sourceDir = path.join(REPO_ROOT, skill.targets[targetNames[0]].source);
+
+  for (const targetName of targetNames) {
+    if (!skill.targets[targetName]) {
+      throw new Error(`Missing ${targetName} target for ${skillName}`);
+    }
+    assertValidTargetSource(
+      path.join(REPO_ROOT, skill.targets[targetName].source),
+      targetName,
+      skill,
+    );
+  }
+
+  if (flags["dry-run"]) {
+    for (const targetName of targetNames) {
+      console.log(
+        `[dry-run] project ${skillName}:${targetName} bank=${bankId} -> ${installDir}`,
+      );
+    }
+    return;
+  }
+
+  const metadataPath = path.join(installDir, ".harness-install.json");
+  const existingMetadata = readJsonFile(metadataPath, null);
+  if (fs.existsSync(installDir) && !flags.force) {
+    throw new Error(
+      [
+        `Target already exists: ${installDir}`,
+        "Re-run with --force to replace the Hindsight runtime and merge hooks.",
+      ].join(" "),
+    );
+  }
+
+  const installedTargets = new Set(
+    Array.isArray(existingMetadata?.targets)
+      ? existingMetadata.targets
+      : detectInstalledHindsightTargets(projectRoot),
+  );
+  for (const targetName of targetNames) {
+    installedTargets.add(targetName);
+  }
+
+  if (fs.existsSync(installDir)) {
+    fs.rmSync(installDir, { recursive: true, force: true });
+  }
+  ensureDirectory(installDir);
+  copyDirectory(
+    path.join(sourceDir, "scripts"),
+    path.join(installDir, "scripts"),
+  );
+  writeJsonFile(
+    path.join(installDir, "settings.json"),
+    buildHindsightSettings(bankId, projectRoot),
+  );
+  writeJsonFile(metadataPath, {
+    installer: HINDSIGHT_INSTALLER,
+    bankId,
+    targets: [...installedTargets].sort(),
+  });
+
+  for (const targetName of targetNames) {
+    const settingsPath = hindsightSettingsPath(projectRoot, targetName);
+    mergeHindsightHooks(settingsPath, targetName, bankId);
+    console.log(
+      `Installed ${skillName}:${targetName} [project] bank=${bankId} -> ${installDir}`,
+    );
+  }
+  if (!process.env.HINDSIGHT_API_TOKEN) {
+    console.warn(
+      "HINDSIGHT_API_TOKEN is not set in this shell. The installed hooks will skip recall and retain until it is available.",
+    );
+  }
+}
+
+function uninstallHindsightBundle({ targetNames, scopeName }) {
+  if (scopeName !== "project") {
+    throw new Error("hindsight only supports project uninstall.");
+  }
+
+  const projectRoot = findProjectRoot(process.cwd());
+  const installDir = path.join(projectRoot, HINDSIGHT_INSTALL_DIR);
+  const metadataPath = path.join(installDir, ".harness-install.json");
+  const metadata = readJsonFile(metadataPath, null);
+  const detectedTargets = detectInstalledHindsightTargets(projectRoot);
+
+  for (const targetName of targetNames) {
+    const settingsPath = hindsightSettingsPath(projectRoot, targetName);
+    removeHindsightHooks(settingsPath);
+    console.log(
+      `Removed hindsight:${targetName} hooks [project] -> ${settingsPath}`,
+    );
+  }
+
+  const installedTargets = new Set(
+    Array.isArray(metadata?.targets) ? metadata.targets : detectedTargets,
+  );
+  for (const targetName of targetNames) {
+    installedTargets.delete(targetName);
+  }
+
+  if (installedTargets.size === 0) {
+    if (fs.existsSync(installDir)) {
+      fs.rmSync(installDir, { recursive: true, force: true });
+      console.log(`Removed Hindsight runtime -> ${installDir}`);
+    }
+    return;
+  }
+
+  writeJsonFile(metadataPath, {
+    ...metadata,
+    targets: [...installedTargets].sort(),
+  });
+}
+
+function buildHindsightSettings(bankId, projectRoot) {
+  const projectName = path.basename(projectRoot);
+  return {
+    version: "0.3.3",
+    hindsightApiUrl: HINDSIGHT_API_URL,
+    bankId,
+    bankMission: `You are a coding assistant working on the ${projectName} repository. Focus on project conventions, architecture, debugging outcomes, deployment workflows, provider integrations, recurring pitfalls, and user preferences that help future work in this repository.`,
+    retainMission: `Extract durable technical knowledge for the ${projectName} repository: architecture decisions, code paths, debugging solutions, branch/deploy workflows, test commands, failed approaches, successful fixes, provider/API constraints, and user preferences. Ignore greetings, transient logs, secrets, credentials, and noisy one-off command output.`,
+    autoRecall: true,
+    autoRetain: true,
+    recallTimeout: 7,
+    recallTags: [`project:${bankId}`],
+    recallTagsMatch: "any",
+    recallBrowseFallback: true,
+    recallBrowseMaxQueries: 6,
+    recallBrowseLimit: 25,
+    recallBrowseTimeout: 3,
+    recallMaxResults: 4,
+    recallContextMaxChars: 1200,
+    recallMinLexicalScore: 6,
+    recallRankMaxTerms: 16,
+    recallContextTurns: 1,
+    recallMaxQueryChars: 800,
+    recallRoles: ["user", "assistant"],
+    recallPromptPreamble: `Relevant memories from past ${projectName} conversations. Use only memories that directly help the current task; prioritize current repository files and live command output when they conflict:`,
+    retainRoles: ["user", "assistant"],
+    retainTags: [`project:${bankId}`, bankId, "{session_id}"],
+    retainMetadata: {
+      project: bankId,
+      repo: projectName,
+    },
+    retainContext: "codex",
+    dynamicBankId: false,
+    agentName: "codex",
+    debug: false,
+    codex: {
+      recallTypes: ["observation", "world"],
+      recallBudget: "low",
+      recallMaxTokens: 256,
+      retainMode: "incremental",
+      retainEveryNTurns: 3,
+      retainToolCalls: false,
+    },
+    claudeCode: {
+      recallTypes: ["observation", "world"],
+      recallBudget: "low",
+      recallMaxTokens: 256,
+      retainMode: "incremental",
+      retainEveryNTurns: 5,
+      retainToolCalls: false,
+      sessionEndFinalRetain: true,
+    },
+  };
+}
+
+function hindsightSettingsPath(projectRoot, targetName) {
+  if (targetName === "codex") {
+    return path.join(projectRoot, ".codex", "hooks.json");
+  }
+  if (targetName === "claude") {
+    return path.join(projectRoot, ".claude", "settings.json");
+  }
+  throw new Error(`Unsupported Hindsight target: ${targetName}`);
+}
+
+function detectInstalledHindsightTargets(projectRoot) {
+  return Object.keys(TARGETS).filter((targetName) => {
+    const settingsPath = hindsightSettingsPath(projectRoot, targetName);
+    if (!fs.existsSync(settingsPath)) {
+      return false;
+    }
+    const content = fs.readFileSync(settingsPath, "utf8");
+    return content.includes(HINDSIGHT_HOOK_MARKER);
+  });
+}
+
+function mergeHindsightHooks(settingsPath, targetName, bankId) {
+  const settings = readJsonFile(settingsPath, {});
+  const hooks = normalizeHooks(settings.hooks);
+  removeHindsightHandlers(hooks);
+
+  const targetHooks = buildHindsightHooks(targetName, bankId);
+  for (const [eventName, groups] of Object.entries(targetHooks)) {
+    hooks[eventName] = [...(hooks[eventName] ?? []), ...groups];
+  }
+
+  writeJsonFile(settingsPath, {
+    ...settings,
+    hooks,
+  });
+}
+
+function removeHindsightHooks(settingsPath) {
+  if (!fs.existsSync(settingsPath)) {
+    return;
+  }
+  const settings = readJsonFile(settingsPath, {});
+  const hooks = normalizeHooks(settings.hooks);
+  removeHindsightHandlers(hooks);
+  writeJsonFile(settingsPath, {
+    ...settings,
+    hooks,
+  });
+}
+
+function normalizeHooks(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? { ...value }
+    : {};
+}
+
+function removeHindsightHandlers(hooks) {
+  for (const [eventName, groups] of Object.entries(hooks)) {
+    if (!Array.isArray(groups)) {
+      continue;
+    }
+    const remainingGroups = [];
+    for (const group of groups) {
+      if (!group || !Array.isArray(group.hooks)) {
+        remainingGroups.push(group);
+        continue;
+      }
+      const remainingHandlers = group.hooks.filter(
+        (handler) =>
+          typeof handler?.command !== "string" ||
+          !handler.command.includes(HINDSIGHT_HOOK_MARKER),
+      );
+      if (remainingHandlers.length > 0) {
+        remainingGroups.push({
+          ...group,
+          hooks: remainingHandlers,
+        });
+      }
+    }
+    if (remainingGroups.length > 0) {
+      hooks[eventName] = remainingGroups;
+    } else {
+      delete hooks[eventName];
+    }
+  }
+}
+
+function buildHindsightHooks(targetName, bankId) {
+  const agentPrefix =
+    targetName === "claude" ? "HINDSIGHT_AGENT_NAME=claude-code " : "";
+  const command = (scriptName) =>
+    `test -n "$HINDSIGHT_API_TOKEN" || exit 0; PYTHONDONTWRITEBYTECODE=1 HINDSIGHT_API_URL=${HINDSIGHT_API_URL} HINDSIGHT_BANK_ID=${bankId} HINDSIGHT_DYNAMIC_BANK_ID=false ${agentPrefix}python3 "$(git rev-parse --show-toplevel)/.codex/hindsight/scripts/${scriptName}"`;
+
+  const hooks = {
+    SessionStart: [
+      {
+        matcher: "startup|resume",
+        hooks: [
+          {
+            type: "command",
+            command: command("session_start.py"),
+            timeout: 5,
+            statusMessage: "Checking Hindsight project memory",
+          },
+        ],
+      },
+    ],
+    UserPromptSubmit: [
+      {
+        hooks: [
+          {
+            type: "command",
+            command: command("recall.py"),
+            timeout: 20,
+            statusMessage: "Loading scoped Hindsight project memory",
+          },
+        ],
+      },
+    ],
+    Stop: [
+      {
+        hooks: [
+          {
+            type: "command",
+            command: command("retain.py"),
+            timeout: 30,
+            statusMessage: "Saving Hindsight project memory",
+          },
+        ],
+      },
+    ],
+  };
+
+  if (targetName === "claude") {
+    hooks.SessionEnd = [
+      {
+        hooks: [
+          {
+            type: "command",
+            command: command("retain.py"),
+            timeout: 30,
+            statusMessage: "Saving final Hindsight project memory",
+          },
+        ],
+      },
+    ];
+  }
+
+  return hooks;
+}
+
+function readJsonFile(filePath, fallback) {
+  if (!fs.existsSync(filePath)) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function writeJsonFile(filePath, value) {
+  ensureDirectory(path.dirname(filePath));
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
 function canPrompt() {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
 
-async function promptForSkills(manifest) {
-  const skillNames = Object.keys(manifest.skills);
+async function promptForSkills(manifest, scopeName) {
+  const skillNames = Object.keys(manifest.skills).filter((skillName) =>
+    supportsScope(manifest.skills[skillName], scopeName),
+  );
   if (skillNames.length === 0) {
     throw new Error("No skills found in manifest.");
   }
@@ -608,7 +1120,7 @@ mhs
 
 Commands:
   mhs list [--json]
-  mhs install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--dry-run] [--force]
+  mhs install [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--bank-id=id] [--dry-run] [--force]
   mhs uninstall [skill...] [--all] [--scope=global|project] [--global] [--project] [--codex] [--claude] [--dry-run] [--yes]
   mhs validate [skill...] [--codex] [--claude]
 
@@ -616,6 +1128,10 @@ Environment:
   HARNESS_CODEX_SKILLS_DIR   Override Codex install root (default: ~/.codex/skills)
   HARNESS_CLAUDE_SKILLS_DIR  Override Claude install root (default: ~/.claude/skills)
   HARNESS_PROJECT_SKILLS_DIR Override project install root (default: native project paths)
+
+Hindsight:
+  Project-only hook bundle. Interactive install prompts for a bank ID.
+  Non-interactive example: mhs install hindsight --project --codex --claude --bank-id=my-project
 `);
   process.exitCode = exitCode;
 }

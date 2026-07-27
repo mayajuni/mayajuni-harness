@@ -1,7 +1,7 @@
 {
   "name": "@mayajuni/harness",
   "version": "0.1.0",
-  "description": "Manifest-driven skill catalog and installer for Codex and Claude.",
+  "description": "Manifest-driven skill and project-bundle installer for Codex and Claude.",
   "type": "module",
   "bin": {
     "mhs": "bin/harness-skills.js"
