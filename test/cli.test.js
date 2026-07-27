@@ -310,6 +310,12 @@ test("hindsight project bundle installs both hook targets with an explicit bank"
     const settings = JSON.parse(
       fs.readFileSync(path.join(installDir, "settings.json"), "utf8"),
     );
+    const installedReadme = fs.readFileSync(
+      path.join(installDir, "README.md"),
+      "utf8",
+    );
+    assert.match(installedReadme, /HINDSIGHT_API_TOKEN/);
+    assert.match(installedReadme, /\.claude\/settings\.json/);
     assert.equal(settings.bankId, "test-bank");
     assert.equal(settings.autoRecall, true);
     assert.equal(settings.autoRetain, true);

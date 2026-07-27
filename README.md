@@ -19,6 +19,7 @@
 └── catalog/
     ├── bundles/
     │   └── hindsight/
+    │       ├── README.md
     │       ├── scripts/
     │       └── tests/
     └── skills/
@@ -132,33 +133,11 @@ mhs uninstall --all --project --yes
 
 `hindsight`는 일반 스킬이 아니라 `project` scope 전용 자동 메모리 훅 번들입니다. Codex와 Claude Code의 프롬프트 제출 시 관련 기억을 자동 조회하고, 응답 종료 시 대화를 증분 저장합니다. MCP 설정은 설치하지 않습니다.
 
-질문형 설치에서는 bank ID를 입력받습니다. 저장소 폴더명을 기본값으로 제안하므로 그대로 쓰려면 Enter를 누르면 됩니다.
-
-```bash
-mhs install
-```
-
-자동화하거나 질문 없이 설치할 때는 bank ID를 명시해야 합니다.
-
 ```bash
 mhs install hindsight --project --codex --claude --bank-id=my-project
 ```
 
-설치 결과:
-
-- 공용 런타임과 프로젝트 설정: `./.codex/hindsight`
-- Codex 훅: `./.codex/hooks.json`에 Hindsight 훅만 병합
-- Claude Code 훅: `./.claude/settings.json`에 Hindsight 훅만 병합
-- 인증: 기존 `HINDSIGHT_API_TOKEN` 환경 변수 사용
-
-기존 JSON 설정과 다른 훅은 보존합니다. 재설치 또는 런타임 갱신에는 `--force`를 사용합니다.
-
-```bash
-mhs install hindsight --project --codex --claude --bank-id=my-project --force
-mhs uninstall hindsight --project --codex --claude --yes
-```
-
-현재 기본 프로필은 Codex가 3턴마다 증분 저장하고, Claude Code가 5턴마다 증분 저장한 뒤 세션 종료 시 한 번 더 최종 저장합니다.
+공용 런타임은 `./.codex/hindsight`에 한 번만 설치되고 Codex와 Claude Code가 함께 사용합니다. 인증 키 설정, 로컬 실행, 설치 확인, 업데이트, 삭제 및 문제 해결은 [Hindsight 상세 설치 및 설정 안내](catalog/bundles/hindsight/README.md)를 참고하세요. 이 안내 문서는 설치 후 `./.codex/hindsight/README.md`에서도 확인할 수 있습니다.
 
 ## 권장 워크플로
 

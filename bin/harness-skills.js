@@ -13,6 +13,7 @@ const HINDSIGHT_INSTALL_DIR = path.join(".codex", "hindsight");
 const HINDSIGHT_HOOK_MARKER = "/.codex/hindsight/scripts/";
 const HINDSIGHT_API_URL = "https://hindsight-api.dongjun.win";
 const HINDSIGHT_RUNTIME_FILES = [
+  "README.md",
   "scripts/session_start.py",
   "scripts/recall.py",
   "scripts/retain.py",
@@ -680,6 +681,10 @@ function installHindsightBundle({
   copyDirectory(
     path.join(sourceDir, "scripts"),
     path.join(installDir, "scripts"),
+  );
+  fs.copyFileSync(
+    path.join(sourceDir, "README.md"),
+    path.join(installDir, "README.md"),
   );
   writeJsonFile(
     path.join(installDir, "settings.json"),
