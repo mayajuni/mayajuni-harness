@@ -1,0 +1,4 @@
+interface:
+  display_name: "LinkedIn Talent Search"
+  short_description: "채용조건으로 LinkedIn 후보를 검색·정리"
+  default_prompt: "Use $linkedin-talent-search to find and rank all LinkedIn candidates matching this hiring request."

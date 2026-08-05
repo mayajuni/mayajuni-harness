@@ -1,6 +1,6 @@
 # mayajuni-harness
 
-`@mayajuni/harness`는 여러 스킬과 프로젝트 번들을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`, `video-highlight`, `media-highlight`, `blog-publish`, `blog-write`, `api-site-mapper`, `hindsight`는 `codex`, `claude` 2타깃을 지원합니다.
+`@mayajuni/harness`는 여러 스킬과 프로젝트 번들을 한 저장소에서 관리하고, `mhs` CLI로 설치/삭제/검증할 수 있게 만든 패키지입니다. 현재 `mj-live-browse`, `linkedin-talent-search`, `video-highlight`, `media-highlight`, `blog-publish`, `blog-write`, `api-site-mapper`, `hindsight`는 `codex`, `claude` 2타깃을 지원합니다.
 
 기본 사용은 질문형 CLI입니다. 옵션을 생략하면 `scope`, `skills`, `tools`를 순서대로 물어봅니다.
 
@@ -25,7 +25,13 @@
     └── skills/
     ├── mj-live-browse/
     │   ├── SKILL.md
-    │   └── references/
+    │   ├── references/
+    │   └── scripts/
+    ├── linkedin-talent-search/
+    │   ├── SKILL.md
+    │   ├── agents/
+    │   ├── references/
+    │   └── scripts/
     ├── video-highlight/
     │   ├── SKILL.md
     │   └── scripts/
@@ -95,6 +101,8 @@ mhs install --all
 ```bash
 mhs install mj-live-browse --codex
 mhs install mj-live-browse --claude
+mhs install linkedin-talent-search --codex
+mhs install linkedin-talent-search --claude
 mhs install video-highlight --codex
 mhs install media-highlight --codex
 mhs install blog-publish --codex
@@ -203,9 +211,13 @@ Codex와 Claude Code가 같은 Agent Skills 형식을 쓰기 때문에 `skills.j
 ```bash
 npx @mayajuni/harness install mj-live-browse --codex
 bunx @mayajuni/harness install mj-live-browse --claude
+npx @mayajuni/harness install linkedin-talent-search --codex
+bunx @mayajuni/harness install linkedin-talent-search --claude
 npx @mayajuni/harness install video-highlight --codex
 npx @mayajuni/harness install media-highlight --codex
 npx @mayajuni/harness install blog-publish --codex
 npx @mayajuni/harness install blog-write --codex
 npx @mayajuni/harness install api-site-mapper --codex
 ```
+
+`mj-live-browse`와 `linkedin-talent-search`는 호환성이 확인된 `agent-browser 0.33.2`를 사용하며 Node.js 24 이상이 필요합니다. 로컬 `agent-browser` 버전이 다르면 전역 패키지를 변경하지 않고 npm-exec으로 고정 버전을 실행합니다. `mj-live-browse`는 macOS에서 Chrome Beta를 우선 사용하고, 설치되어 있지 않으면 전용 프로필을 유지한 채 일반 Chrome으로 대체합니다.

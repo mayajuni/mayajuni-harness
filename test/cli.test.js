@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { once } from "node:events";
+import http from "node:http";
 import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
@@ -24,6 +26,17 @@ async function initGitRepo(dir) {
   await execFileAsync("git", ["init", "-q"], { cwd: dir });
 }
 
+async function listenOnLoopback(server) {
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return server.address().port;
+}
+
+async function closeServer(server) {
+  server.close();
+  await once(server, "close");
+}
+
 function countHindsightHandlers(settings) {
   return Object.values(settings.hooks ?? {})
     .flat()
@@ -33,6 +46,11 @@ function countHindsightHandlers(settings) {
         typeof handler.command === "string" &&
         handler.command.includes("/.codex/hindsight/scripts/"),
     ).length;
+}
+
+function writeExecutable(filePath, contents) {
+  fs.writeFileSync(filePath, contents);
+  fs.chmodSync(filePath, 0o755);
 }
 
 test("list --json returns manifest entries", async () => {
@@ -88,6 +106,12 @@ test("install then uninstall round-trips into a scratch dir", async () => {
       fs.existsSync(referencesDir),
       "expected references/ to be copied",
     );
+    assert.ok(
+      fs.existsSync(
+        path.join(tmp, "mj-live-browse", "scripts", "browser-runtime.mjs"),
+      ),
+      "expected browser runtime to be copied",
+    );
 
     await runCli(
       ["uninstall", "mj-live-browse", "--global", "--codex", "--yes"],
@@ -119,6 +143,12 @@ test("claude target installs the SKILL.md payload", async () => {
     assert.ok(
       fs.existsSync(referencesDir),
       "expected shared references/ to be copied for claude",
+    );
+    assert.ok(
+      fs.existsSync(
+        path.join(tmp, "mj-live-browse", "scripts", "browser-runtime.mjs"),
+      ),
+      "expected shared browser runtime for claude",
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -214,6 +244,384 @@ test("api-site-mapper installs its capture script and references", async () => {
       fs.existsSync(outputReference),
       "expected output-format.md to be copied",
     );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("linkedin-talent-search installs the shared Codex and Claude payload", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  const codexRoot = path.join(tmp, "codex");
+  const claudeRoot = path.join(tmp, "claude");
+  const env = {
+    ...process.env,
+    HARNESS_CODEX_SKILLS_DIR: codexRoot,
+    HARNESS_CLAUDE_SKILLS_DIR: claudeRoot,
+  };
+
+  try {
+    await runCli(
+      [
+        "install",
+        "linkedin-talent-search",
+        "--global",
+        "--codex",
+        "--claude",
+        "--force",
+      ],
+      { env },
+    );
+
+    for (const root of [codexRoot, claudeRoot]) {
+      const skillDir = path.join(root, "linkedin-talent-search");
+      assert.ok(fs.existsSync(path.join(skillDir, "SKILL.md")));
+      assert.ok(
+        fs.existsSync(path.join(skillDir, "agents", "openai.yaml")),
+      );
+      assert.ok(
+        fs.existsSync(
+          path.join(skillDir, "scripts", "browser-runtime.mjs"),
+        ),
+      );
+      assert.ok(
+        fs.existsSync(
+          path.join(skillDir, "references", "result-contract.md"),
+        ),
+      );
+      assert.match(
+        fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"),
+        /Inspect the live filter surface and build a FilterPlan/,
+      );
+      assert.match(
+        fs.readFileSync(
+          path.join(skillDir, "references", "search-spec.md"),
+          "utf8",
+        ),
+        /Live FilterPlan/,
+      );
+
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [path.join(skillDir, "scripts", "browser-runtime.mjs"), "--help"],
+        { env },
+      );
+      assert.match(stdout, /LinkedIn Talent Search browser runtime/);
+      assert.match(stdout, /default: 0\.33\.2/);
+      assert.match(stdout, /CLOSE_ON_COMPLETE \(tab\|none, default: tab\)/);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test(
+  "browser runtimes execute a compatible direct agent-browser only once",
+  { skip: process.platform === "win32" },
+  async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+    const binDir = path.join(tmp, "bin");
+    const callLog = path.join(tmp, "calls.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    writeExecutable(
+      path.join(binDir, "agent-browser"),
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "agent-browser 0.33.2"
+  exit 0
+fi
+echo "direct" >> "$HARNESS_CALL_LOG"
+`,
+    );
+    writeExecutable(
+      path.join(binDir, "npm"),
+      `#!/bin/sh
+echo "npm-fallback" >> "$HARNESS_CALL_LOG"
+`,
+    );
+
+    try {
+      for (const skillName of ["linkedin-talent-search", "mj-live-browse"]) {
+        fs.writeFileSync(callLog, "");
+        const runtime = path.join(
+          REPO_ROOT,
+          "catalog",
+          "skills",
+          skillName,
+          "scripts",
+          "browser-runtime.mjs",
+        );
+        await execFileAsync(process.execPath, [runtime, "agent", "tab", "list"], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+            HARNESS_CALL_LOG: callLog,
+          },
+        });
+        assert.equal(
+          fs.readFileSync(callLog, "utf8"),
+          "direct\n",
+          `${skillName} should not fall through to npm after direct execution`,
+        );
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "browser runtimes close only owned task tabs after complete status",
+  { skip: process.platform === "win32" },
+  async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+    const binDir = path.join(tmp, "bin");
+    const callLog = path.join(tmp, "calls.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    writeExecutable(
+      path.join(binDir, "agent-browser"),
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "agent-browser 0.33.2"
+  exit 0
+fi
+echo "$*" >> "$HARNESS_CALL_LOG"
+`,
+    );
+    writeExecutable(
+      path.join(binDir, "npm"),
+      `#!/bin/sh
+echo "npm-fallback $*" >> "$HARNESS_CALL_LOG"
+`,
+    );
+
+    const cases = [
+      {
+        skillName: "linkedin-talent-search",
+        profileEnv: "LINKEDIN_TALENT_PROFILE_DIR",
+        closeEnv: "LINKEDIN_TALENT_CLOSE_ON_COMPLETE",
+        port: 9223,
+        labelPrefix: "linkedin-talent",
+      },
+      {
+        skillName: "mj-live-browse",
+        profileEnv: "MJ_LIVE_BROWSE_PROFILE_DIR",
+        closeEnv: "MJ_LIVE_BROWSE_CLOSE_ON_COMPLETE",
+        port: 9222,
+        labelPrefix: "mj-live",
+      },
+    ];
+
+    try {
+      for (const runtimeCase of cases) {
+        fs.writeFileSync(callLog, "");
+        const profileDir = path.join(tmp, `${runtimeCase.skillName}-profile`);
+        const runtime = path.join(
+          REPO_ROOT,
+          "catalog",
+          "skills",
+          runtimeCase.skillName,
+          "scripts",
+          "browser-runtime.mjs",
+        );
+        const taskId = "run+001";
+        const label = `${runtimeCase.labelPrefix}-${taskId}`;
+        const statePath = path.join(
+          profileDir,
+          ".harness-task-tabs",
+          `${label}.json`,
+        );
+        const env = {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+          HARNESS_CALL_LOG: callLog,
+          [runtimeCase.profileEnv]: profileDir,
+          [runtimeCase.closeEnv]: "tab",
+        };
+
+        const opened = JSON.parse(
+          (
+            await execFileAsync(
+              process.execPath,
+              [runtime, "task-tab", "open", taskId, "https://example.com"],
+              { env },
+            )
+          ).stdout,
+        );
+        assert.equal(opened.owned, true);
+        assert.equal(opened.created, true);
+        assert.equal(opened.label, label);
+        assert.equal(fs.existsSync(statePath), true);
+
+        const partial = JSON.parse(
+          (
+            await execFileAsync(
+              process.execPath,
+              [runtime, "task-tab", "finish", taskId, "partial"],
+              { env },
+            )
+          ).stdout,
+        );
+        assert.equal(partial.retained, true);
+        assert.equal(fs.existsSync(statePath), true);
+
+        const reopened = JSON.parse(
+          (
+            await execFileAsync(
+              process.execPath,
+              [runtime, "task-tab", "open", taskId, "https://example.com"],
+              { env },
+            )
+          ).stdout,
+        );
+        assert.equal(reopened.reused, true);
+
+        const completed = JSON.parse(
+          (
+            await execFileAsync(
+              process.execPath,
+              [runtime, "task-tab", "finish", taskId, "complete"],
+              { env },
+            )
+          ).stdout,
+        );
+        assert.equal(completed.closed, true);
+        assert.equal(fs.existsSync(statePath), false);
+        assert.equal(
+          fs.readFileSync(callLog, "utf8"),
+          `--cdp ${runtimeCase.port} tab new --label ${label} https://example.com\n` +
+            `--cdp ${runtimeCase.port} tab close ${label}\n`,
+        );
+
+        const existing = JSON.parse(
+          (
+            await execFileAsync(
+              process.execPath,
+              [runtime, "task-tab", "finish", "existing-tab", "complete"],
+              { env },
+            )
+          ).stdout,
+        );
+        assert.equal(existing.owned, false);
+        assert.equal(existing.closed, false);
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+);
+
+test("linkedin browser runtime reuses an existing dedicated CDP endpoint", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  const runtime = path.join(
+    REPO_ROOT,
+    "catalog",
+    "skills",
+    "linkedin-talent-search",
+    "scripts",
+    "browser-runtime.mjs",
+  );
+  const server = http.createServer((request, response) => {
+    if (request.url === "/json/version") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ Browser: "Test Chrome" }));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  try {
+    const port = await listenOnLoopback(server);
+    const profileDir = path.join(tmp, "profile");
+    const { stdout } = await execFileAsync(process.execPath, [runtime, "ensure"], {
+      env: {
+        ...process.env,
+        LINKEDIN_TALENT_CDP_PORT: String(port),
+        LINKEDIN_TALENT_PROFILE_DIR: profileDir,
+      },
+    });
+    const status = JSON.parse(stdout);
+    assert.equal(status.ready, true);
+    assert.equal(status.launched, false);
+    assert.equal(status.browser, "Test Chrome");
+    assert.equal(fs.existsSync(profileDir), false);
+  } finally {
+    await closeServer(server);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("linkedin browser runtime preserves profile locks and blocks startup", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  const runtime = path.join(
+    REPO_ROOT,
+    "catalog",
+    "skills",
+    "linkedin-talent-search",
+    "scripts",
+    "browser-runtime.mjs",
+  );
+  const probe = http.createServer();
+  const port = await listenOnLoopback(probe);
+  await closeServer(probe);
+  const profileDir = path.join(tmp, "profile");
+  const lockPath = path.join(profileDir, "SingletonLock");
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(lockPath, "preserve-me");
+
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [runtime, "ensure"], {
+        env: {
+          ...process.env,
+          LINKEDIN_TALENT_CDP_PORT: String(port),
+          LINKEDIN_TALENT_PROFILE_DIR: profileDir,
+        },
+      }),
+      (error) => {
+        assert.match(error.stderr, /profile_lock_present/);
+        return true;
+      },
+    );
+    assert.equal(fs.readFileSync(lockPath, "utf8"), "preserve-me");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("mj-live-browse runtime preserves profile locks and blocks startup", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  const runtime = path.join(
+    REPO_ROOT,
+    "catalog",
+    "skills",
+    "mj-live-browse",
+    "scripts",
+    "browser-runtime.mjs",
+  );
+  const probe = http.createServer();
+  const port = await listenOnLoopback(probe);
+  await closeServer(probe);
+  const profileDir = path.join(tmp, "profile");
+  const lockPath = path.join(profileDir, "SingletonLock");
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(lockPath, "preserve-me");
+
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [runtime, "ensure"], {
+        env: {
+          ...process.env,
+          MJ_LIVE_BROWSE_CDP_PORT: String(port),
+          MJ_LIVE_BROWSE_PROFILE_DIR: profileDir,
+        },
+      }),
+      (error) => {
+        assert.match(error.stderr, /profile_lock_present/);
+        return true;
+      },
+    );
+    assert.equal(fs.readFileSync(lockPath, "utf8"), "preserve-me");
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

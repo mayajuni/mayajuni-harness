@@ -1,239 +1,194 @@
 ---
 name: mj-live-browse
 description: |
-  agent-browser CLI로 Chrome Beta CDP에 연결해 실제 로그인된 브라우저에서 웹 작업을 자동 수행하는 스킬.
-  트리거: "브라우저로 해줘", "사이트에서 처리해줘", "클릭해줘", "입력해줘", "업로드해줘", "페이지 봐줘".
-  자동으로 의존성 체크/설치, Chrome Beta 실행, CDP 연결, 탭 선택까지 처리한다.
-  고정 프로필($HOME/.chrome-beta-live-profile)에 저장된 로그인 세션을 그대로 이어받는다.
+  Control a real logged-in Chrome browser through a fixed-profile local CDP session and agent-browser. Use when the user asks to browse, inspect, click, type, upload, search, filter, or complete work in a website, including Korean triggers such as "브라우저로 해줘", "사이트에서 처리해줘", "클릭해줘", "입력해줘", "업로드해줘", or "페이지 봐줘". Automatically checks the browser runtime, prefers Chrome Beta with stable Chrome fallback, selects a suitable tab, and preserves the login session. Works in Codex and Claude Code.
 ---
 
-# AI 라이브 브라우저 제어 (자율 실행 버전)
+# AI Live Browser Control
 
-브라우저 제어는 **`agent-browser`를 기본 도구**로 사용한다. (iframe 등 미지원 케이스에서만 playwright-cli 보조)
-사용자가 자연어로 웹 작업을 요청하면 아래 부트스트랩 절차를 **자동 실행**하고 곧바로 작업에 들어간다.
-사용자에게 탭 번호나 실행 여부를 묻지 않는다. 단, 결제·계정 삭제·돌이킬 수 없는 상태 변경 직전에는 한 번 확인한다.
+Operate the user's real logged-in browser with `agent-browser` through an explicit local CDP port. Continue autonomously for reversible browsing work; pause before sensitive or irreversible actions.
 
-> **고정 프로필**: `$HOME/.chrome-beta-live-profile` (변경 금지). 이 프로필에 사용자가 미리 로그인해 둔 세션을 AI가 이어받는다.
+## Runtime Contract
 
----
+- Fixed profile: `~/.chrome-beta-live-profile`
+- Local CDP port: `9222`
+- Compatibility-verified agent-browser: `0.33.2`
+- Runtime requirement: Node.js `24+`
+- Preferred browser: Google Chrome Beta
+- macOS fallback: Google Chrome when Beta is not installed
 
-## 자동 부트스트랩 (작업 시작 시 항상 실행)
+Do not use a default/headless agent-browser session. Use `scripts/browser-runtime.mjs` from this skill for browser startup and every browser command. The wrapper preserves the explicit CDP port and uses exactly the compatibility-verified agent-browser version.
 
-아래 단계를 순서대로 실행한다. **CDP 상태 확인은 반드시 독립된 읽기 전용 명령으로 먼저 실행**하고,
-그 결과가 실패일 때만 Chrome Beta 실행 단계로 넘어간다. 여러 단계를 하나의 셸 블록으로 합치지 않는다.
+Supported overrides:
 
-> macOS에서는 Chrome Beta 바이너리를 `nohup ".../Google Chrome Beta"`로 직접 실행하지 않는다.
-> 직접 실행하면 GUI 프로세스가 잠깐 뜬 뒤 종료되고, `agent-browser`가 임시 headless Chrome 세션으로 빠질 수 있다.
-> 반드시 `open -na "Google Chrome Beta" --args ...`로 앱 런처를 통해 실행한다.
+- `MJ_LIVE_BROWSE_CDP_PORT`
+- `MJ_LIVE_BROWSE_PROFILE_DIR`
+- `MJ_LIVE_BROWSE_AGENT_BROWSER_VERSION`
+- `MJ_LIVE_BROWSE_CLOSE_ON_COMPLETE` (`tab` by default; set `none` to retain owned tabs)
+- `MJ_LIVE_BROWSE_CHROME_APP` on macOS
+- `MJ_LIVE_BROWSE_CHROME_PATH` on Windows/Linux
 
-### 1) agent-browser 설치 확인
+## Automatic Bootstrap
 
-```bash
-if ! command -v agent-browser >/dev/null 2>&1; then
-  echo "📦 agent-browser 설치 중..."
-  npm i -g agent-browser
-fi
-```
-
-### 2) CDP 상태를 읽기 전용으로 먼저 확인
-
-아래 명령은 **별도 도구 호출**로 실행한다. 종료 코드가 0이면 Chrome을 새로 실행하거나 프로필 잠금파일을
-건드리지 말고 곧바로 4단계로 간다. 실패할 때만 3단계를 실행한다.
+Resolve this skill directory to an absolute path. Run the read-only status check as its own command before launching anything:
 
 ```bash
-curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1
+node <skill-directory>/scripts/browser-runtime.mjs status
 ```
 
-### 3) CDP가 없을 때만 Chrome Beta 실행
-
-실행 전 상태 확인은 읽기 전용으로 한다. `SingletonLock`, `SingletonSocket`, `SingletonCookie`는 Chrome의
-프로필 동시 사용을 막는 보호장치이므로 **자동 삭제하거나 이동하지 않는다**.
+If `ready` is false, run:
 
 ```bash
-pgrep -fl "Google Chrome Beta" || true
-for lock_name in SingletonLock SingletonSocket SingletonCookie; do
-  lock_path="$HOME/.chrome-beta-live-profile/$lock_name"
-  if [ -L "$lock_path" ]; then
-    printf '%s -> %s\n' "$lock_path" "$(readlink "$lock_path" 2>/dev/null || true)"
-  elif [ -e "$lock_path" ]; then
-    printf '%s exists\n' "$lock_path"
-  fi
-done
+node <skill-directory>/scripts/browser-runtime.mjs ensure
 ```
 
-그다음 GUI 앱으로 실행하고 CDP가 깨어날 때까지 확인한다.
+Then verify the real CDP browser:
 
 ```bash
-echo "🚀 Chrome Beta 실행 중..."
-/usr/bin/open -na "Google Chrome Beta" --args \
-  --remote-debugging-port=9222 \
-  "--remote-allow-origins=*" \
-  "--user-data-dir=$HOME/.chrome-beta-live-profile" \
-  --no-first-run \
-  --no-default-browser-check
-
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  if curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-
-if ! curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-  echo "Chrome Beta CDP가 10초 안에 열리지 않았습니다." >&2
-  exit 1
-fi
+node <skill-directory>/scripts/browser-runtime.mjs agent tab list
 ```
 
-Chrome 실행이 실패하더라도 잠금파일을 자동 정리하지 않는다. 프로세스와 잠금 링크 상태를 보고하고,
-사용자에게 Chrome Beta 종료 또는 복구 작업 진행 여부를 확인한다.
+The runtime:
 
-### 4) 반드시 Beta CDP에 붙는지 확인
+- reuses port `9222` when it is already ready;
+- launches Chrome Beta with the fixed profile when available;
+- falls back to stable Chrome without reusing the user's normal Chrome profile;
+- binds remote debugging to `127.0.0.1`;
+- does not add `--remote-allow-origins=*`;
+- never deletes or moves `SingletonLock`, `SingletonSocket`, or `SingletonCookie`;
+- blocks and reports `profile_lock_present` when the fixed profile is locked but CDP is unavailable.
+
+If the user needs to see or configure the browser directly, bring it forward on macOS and leave it open:
 
 ```bash
-agent-browser --cdp 9222 tab list
+node <skill-directory>/scripts/browser-runtime.mjs focus
 ```
 
-> Windows(Git Bash)는 `"/c/Program Files/Google/Chrome Beta/Application/chrome.exe"` 경로로 대체.
-> 이후 모든 `agent-browser` 명령은 기본 세션에 의존하지 말고 `agent-browser --cdp 9222 ...` 형태로 실행한다.
-> `agent-browser connect 9222`만 호출한 뒤 `--cdp` 없이 명령하면, 9222가 죽었을 때 임시 headless Chrome으로 빠질 수 있다.
+If login, SSO, 2FA, CAPTCHA, or identity verification is required, ask the user to complete it in the fixed-profile browser. Never request, store, or type the user's password or recovery code.
 
----
+## Tab Selection
 
-## 자동 탭 선택 규칙
+After `tab list`, choose without asking unless the target is ambiguous:
 
-부트스트랩 직후 `agent-browser --cdp 9222 tab list`로 탭을 가져와 아래 우선순위로 **AI가 직접 선택**한다 (사용자에게 묻지 않음).
-
-1. 사용자가 URL/도메인을 명시했고, 그 도메인에 매칭되는 탭이 있으면 → 그 탭 사용 (`tab N`)
-2. `about:blank` 탭이 있으면 → 그 탭 재활용 후 `open URL`
-3. 탭이 하나뿐이면 → 그 탭에 `open URL`
-4. 위에 해당 없으면 → `tab new "URL"`로 새 탭
-
-선택 직후에는 반드시 다음을 실행해 의도한 페이지인지 확인한다:
+1. Reuse a tab matching the user-provided URL or domain only when its existing state is relevant. Mark it not owned.
+2. Otherwise generate a unique task ID and open a new owned tab, even when `about:blank` exists:
 
 ```bash
-agent-browser --cdp 9222 eval "document.title + ' | ' + location.href"
+node <skill-directory>/scripts/browser-runtime.mjs task-tab open <task-id> "https://target.example"
 ```
 
-다르면 다시 navigate. 사용자에게 먼저 묻지 않는다.
+3. Record the returned task ID and label in working state. Do not mark an existing or manually opened tab as owned.
+4. Use the current tab without ownership only when the user explicitly asks to work in that exact tab.
 
----
-
-## 작업 수행 패턴
-
-### 데이터 조회 (eval 우선 — 빠르고 토큰 절약)
+Immediately verify title and URL:
 
 ```bash
-agent-browser --cdp 9222 eval "document.title"
-agent-browser --cdp 9222 eval "document.querySelector('#field').value"
-agent-browser --cdp 9222 eval "JSON.stringify(Array.from(document.querySelectorAll('li.item')).map(el=>el.innerText))"
-agent-browser --cdp 9222 eval "document.body.innerText.substring(0, 2000)"
+node <skill-directory>/scripts/browser-runtime.mjs agent eval "document.title + ' | ' + location.href"
 ```
 
-> **eval은 단순 표현식만**. IIFE `(function(){...})()` 금지 — 직렬화 오류. 동작이 여러 개면 eval을 나눠 호출.
+If the target is wrong, navigate again before interacting.
 
-### 클릭/입력 (셀렉터 모를 때 snapshot)
+## Interaction Patterns
+
+### Read data
+
+Prefer targeted reads:
 
 ```bash
-# 인터랙티브 요소만 + 컴팩트 (필수 옵션)
-agent-browser --cdp 9222 snapshot -i -c
-agent-browser --cdp 9222 snapshot -i -c -s "form"     # 범위 제한
-
-# ref 기반 조작 (DOM 바뀌면 무효 → 다시 snapshot)
-agent-browser --cdp 9222 click e10
-agent-browser --cdp 9222 fill e37 "검색어"
-agent-browser --cdp 9222 press Enter
+node <skill-directory>/scripts/browser-runtime.mjs agent get title
+node <skill-directory>/scripts/browser-runtime.mjs agent get url
+node <skill-directory>/scripts/browser-runtime.mjs agent eval "document.querySelector('#field')?.value"
+node <skill-directory>/scripts/browser-runtime.mjs agent eval "document.body.innerText.substring(0, 2000)"
 ```
 
-> **eval로 click()은 isTrusted:false** — 보안 폼/SPA에서 무시될 수 있음. 안 되면 snapshot → ref click.
-> **전체 snapshot 금지** (~65k 토큰). 항상 `-i -c`.
+Use simple expressions. Split unrelated DOM mutations or reads into separate calls.
 
-### Angular/React에서 fill 후 버튼이 [disabled]면
+### Locate and interact
+
+Use compact interactive snapshots when selectors are unknown:
 
 ```bash
-agent-browser --cdp 9222 eval "document.querySelector('#input').dispatchEvent(new Event('input', {bubbles:true}))"
-# 그래도 안 되면 change 이벤트도 발행
+node <skill-directory>/scripts/browser-runtime.mjs agent snapshot -i -c
+node <skill-directory>/scripts/browser-runtime.mjs agent snapshot -i -c -s "form"
+node <skill-directory>/scripts/browser-runtime.mjs agent click @e10
+node <skill-directory>/scripts/browser-runtime.mjs agent fill @e37 "검색어"
+node <skill-directory>/scripts/browser-runtime.mjs agent press Enter
 ```
 
-상세: `references/SPA-프레임워크-입력패턴.md`
+Refresh the snapshot after navigation, modal changes, filtering, or any material DOM update. Refs are temporary.
 
-### iframe 내부 접근 (agent-browser 미지원 → playwright-cli)
+Prefer ref-based user-like actions over `element.click()` because direct DOM clicks can produce untrusted events. If a controlled input remains disabled after `fill`, dispatch a bubbling `input` event and then `change` only when necessary. See `references/SPA-프레임워크-입력패턴.md`.
+
+### Upload files
+
+Resolve the file to an absolute path and use the native upload command against the file input ref:
 
 ```bash
-playwright-cli --config="$HOME/.playwright/cli.config.json" eval \
-  "document.querySelector('iframe[src*=대상]').contentDocument.querySelector('#x').innerText"
+node <skill-directory>/scripts/browser-runtime.mjs agent upload @e20 "/absolute/path/to/file"
 ```
 
-config 자동 생성:
+Avoid opening or controlling the OS file chooser. For unusual framework/file-input cases, read `references/SPA-프레임워크-입력패턴.md`.
+
+### Special surfaces
+
+- iframe or modal boundary: read `references/iframe-모달-패턴.md`.
+- Flutter/canvas UI with empty body text: read `references/Flutter-웹앱-패턴.md`.
+- native alert/confirm behavior: read `references/native-dialog-주의사항.md`.
+- external-service link transitions: read `references/외부서비스-링크전환-패턴.md`.
+- command/token tradeoffs: read `references/토큰-최적화-실측데이터.md`.
+
+Use screenshots only when visual state is necessary. Prefer text, accessibility snapshots, and targeted DOM reads for ordinary extraction.
+
+## Safety Guards
+
+Pause immediately before:
+
+- final payment or purchase confirmation;
+- account deletion, password change, or security-setting change;
+- irreversible deletion or submission;
+- sending a public message, email, application, or form when the user has not explicitly authorized sending;
+- login, 2FA, CAPTCHA, identity verification, or recovery flow.
+
+Continue without another confirmation for reversible navigation, search, filtering, pagination, drafting, form filling before submission, and read-only aggregation that matches the user's request.
+
+Do not bypass security challenges, alter browser fingerprints, delete profile locks, or fall back to a hidden temporary browser when the fixed CDP session fails.
+
+## Completion and Browser Lifetime
+
+Report what was completed, what was not completed, and any user action still required.
+
+Keep the fixed-profile browser process open so its login session remains available. After successful completion, close only a tab created through `task-tab open`:
+
 ```bash
-if [ ! -f "$HOME/.playwright/cli.config.json" ]; then
-  mkdir -p "$HOME/.playwright"
-  echo '{"browser":{"cdpEndpoint":"http://localhost:9222","isolated":false}}' > "$HOME/.playwright/cli.config.json"
-fi
+node <skill-directory>/scripts/browser-runtime.mjs task-tab finish <task-id> complete
 ```
 
-### Flutter 웹앱 (canvas/flt-semantics)
-
-`document.body.innerText`가 빈값/"로딩 중"이면 Flutter 의심. UI 조작 대신 dart.js 분석 → fetch 직접 호출이 압도적으로 효율적.
-상세: `references/Flutter-웹앱-패턴.md`
-
-### 파일 업로드 (OS 다이얼로그 차단)
-
-`agent-browser --cdp 9222 click`은 isTrusted:true라 다이얼로그가 뜬다. 미리 CDP `Page.setInterceptFileChooserDialog`로 가로챈 뒤 `setFileInputFiles(backendNodeId)` 주입.
-상세: `references/SPA-프레임워크-입력패턴.md` §3.
-
----
-
-## 마무리
-
-작업 완료 또는 확인 완료 후 결과를 사용자에게 텍스트로 요약 보고하고, Chrome Beta를 닫는다. 다음 명령으로 macOS 앱 종료를 먼저 시도한 뒤 CDP 포트가 살아 있으면 프로세스 종료로 보강한다:
+For partial, blocked, failed, user-intervention, CAPTCHA, login, or resumable work, finish with the actual non-complete status. The runtime retains the owned tab:
 
 ```bash
-osascript -e 'tell application "Google Chrome Beta" to quit' || true
-sleep 2
-if pgrep -x "Google Chrome Beta" >/dev/null || curl -s --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-  pkill -x "Google Chrome Beta" || true
-fi
+node <skill-directory>/scripts/browser-runtime.mjs task-tab finish <task-id> partial
+node <skill-directory>/scripts/browser-runtime.mjs task-tab finish <task-id> blocked
 ```
 
----
+If the user asks to keep the task tab open after success, add `--keep`. A reused existing tab has no ownership state, so `finish` closes nothing. Do not run `osascript ... quit`, `pkill -x`, or `close --all`; those can close unrelated browser windows or sessions.
 
-## 안전 가드
+Only when the user explicitly asks to close the live browser, close the browser attached to this skill's CDP endpoint:
 
-자율 실행이지만 아래는 멈추고 사용자 확인:
+```bash
+node <skill-directory>/scripts/browser-runtime.mjs agent close
+```
 
-- **결제 버튼 클릭 직전** (장바구니 담기/조회는 OK, 최종 결제만 확인)
-- **계정 삭제/탈퇴/비밀번호 변경 직전**
-- **돌이킬 수 없는 데이터 삭제 직전**
-- **로그인이 안 된 상태에서 로그인 시도 — AI가 직접 로그인하지 않음.** 사용자에게 "고정 프로필에 로그인해 주세요" 안내 후 대기.
-- **2차 인증/캡차** — 사용자에게 처리 요청 후 대기.
+The runtime refuses `close --all`.
 
-그 외(조회·검색·필터·페이지 이동·폼 작성·자동완성·집계 등)는 묻지 않고 진행한다.
+## Core Rules
 
----
-
-## 핵심 규칙 (요약)
-
-1. CDP를 별도 읽기 전용 명령으로 먼저 확인하고, 없을 때만 Chrome Beta를 실행한다.
-2. 탭은 AI가 자동 선택, 단 선택 직후 `eval document.title`로 확인.
-3. 모든 `agent-browser` 명령은 `--cdp 9222`를 붙여 Chrome Beta에 직접 실행.
-4. 조회는 eval 우선, 클릭/입력은 ref(snapshot) 우선.
-5. snapshot은 `-i -c` 필수.
-6. eval은 단순 표현식만, 여러 동작은 나눠 호출.
-7. ref는 DOM 바뀌면 무효 → 재 snapshot.
-8. iframe → playwright-cli, Flutter → API 직접 호출 검토.
-9. screenshot + 이미지 Read 금지(토큰 폭발). 텍스트는 `body.innerText.substring`으로 추출.
-10. 작업/확인 끝나면 Chrome Beta를 닫음.
-11. 결제/탈퇴/삭제 직전만 확인.
-12. Chrome 프로필의 `Singleton*` 잠금파일을 자동 삭제하거나 이동하지 않는다.
-
-## 참조 문서
-
-| 문서 | 용도 |
-|------|------|
-| `references/SPA-프레임워크-입력패턴.md` | Angular/React 이벤트 발행, 파일 업로드 CDP 인터셉트 |
-| `references/iframe-모달-패턴.md` | jQuery UI Dialog + iframe |
-| `references/Flutter-웹앱-패턴.md` | Flutter 판별 / API 직접 호출 |
-| `references/native-dialog-주의사항.md` | alert/confirm 자동 dismiss 이슈 |
-| `references/외부서비스-링크전환-패턴.md` | 외부 서비스 전환 fallback |
-| `references/토큰-최적화-실측데이터.md` | 명령별 토큰 비용 |
+1. Run the read-only `status` command before `ensure`.
+2. Use the fixed profile and explicit CDP wrapper for every action.
+3. Verify the selected tab's title and URL before work.
+4. Prefer targeted reads; use `snapshot -i -c` for unknown controls.
+5. Refresh refs after DOM changes.
+6. Let the user handle login, 2FA, CAPTCHA, and identity checks.
+7. Pause before sensitive, irreversible, or externally sent actions.
+8. Never delete Chrome profile locks or use a temporary browser fallback.
+9. On `complete`, close only a task-owned tab; retain reused tabs and all non-complete task tabs.
+10. Never close unrelated browser sessions.

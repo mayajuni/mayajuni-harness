@@ -1,13 +1,24 @@
 {
   "skills": {
     "mj-live-browse": {
-      "description": "Chrome Beta CDP 라이브 세션을 이어받아 agent-browser(+ playwright-cli fallback)로 실제 브라우저에서 웹 작업을 수행. 한국어 트리거 키워드: 브라우저로 해줘, 사이트에서 처리해줘, 클릭해줘, 입력해줘, 업로드해줘, 페이지 봐줘.",
+      "description": "고정 프로필의 Chrome Beta CDP 라이브 세션을 agent-browser 0.33.2로 제어하고, macOS에서는 Beta가 없을 때 일반 Chrome으로 대체한다. 한국어 트리거 키워드: 브라우저로 해줘, 사이트에서 처리해줘, 클릭해줘, 입력해줘, 업로드해줘, 페이지 봐줘.",
       "targets": {
         "codex": {
           "source": "catalog/skills/mj-live-browse"
         },
         "claude": {
           "source": "catalog/skills/mj-live-browse"
+        }
+      }
+    },
+    "linkedin-talent-search": {
+      "description": "채용공고나 원하는 인재상을 LinkedIn Sales Navigator 검색조건으로 변환하고, 현재 계정에서 접근 가능한 전체 결과를 기본 범위로 페이지별 수집·중복 제거·근거 기반 평가·내보내기한다. 한국어 트리거: 채용공고에 맞는 인재 찾아줘, 원하는 인재상으로 링크드인 검색해줘, 후보를 전부 가져와, 링크드인 인재 추천해줘.",
+      "targets": {
+        "codex": {
+          "source": "catalog/skills/linkedin-talent-search"
+        },
+        "claude": {
+          "source": "catalog/skills/linkedin-talent-search"
         }
       }
     },
