@@ -19,50 +19,78 @@ description: |
 
 ## 자동 부트스트랩 (작업 시작 시 항상 실행)
 
-아래 한 블록을 그대로 실행하면 의존성 설치 → Chrome Beta 실행 → CDP 확인까지 끝난다.
+아래 단계를 순서대로 실행한다. **CDP 상태 확인은 반드시 독립된 읽기 전용 명령으로 먼저 실행**하고,
+그 결과가 실패일 때만 Chrome Beta 실행 단계로 넘어간다. 여러 단계를 하나의 셸 블록으로 합치지 않는다.
 
 > macOS에서는 Chrome Beta 바이너리를 `nohup ".../Google Chrome Beta"`로 직접 실행하지 않는다.
 > 직접 실행하면 GUI 프로세스가 잠깐 뜬 뒤 종료되고, `agent-browser`가 임시 headless Chrome 세션으로 빠질 수 있다.
 > 반드시 `open -na "Google Chrome Beta" --args ...`로 앱 런처를 통해 실행한다.
 
+### 1) agent-browser 설치 확인
+
 ```bash
-# 1) agent-browser 설치 확인 / 자동 설치
 if ! command -v agent-browser >/dev/null 2>&1; then
   echo "📦 agent-browser 설치 중..."
   npm i -g agent-browser
 fi
+```
 
-# 2) Chrome Beta CDP(9222) 살아 있는지 확인 / 없으면 GUI 앱으로 실행
-if ! curl -s --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-  echo "🚀 Chrome Beta 실행 중..."
+### 2) CDP 상태를 읽기 전용으로 먼저 확인
 
-  # 이전에 Chrome Beta가 비정상 종료되며 남긴 stale profile lock만 제거
-  lock="$HOME/.chrome-beta-live-profile/SingletonLock"
-  if [ -L "$lock" ]; then
-    lock_target="$(readlink "$lock" 2>/dev/null || true)"
-    lock_pid="${lock_target##*-}"
-    if [ -n "$lock_pid" ] && ! ps -p "$lock_pid" >/dev/null 2>&1; then
-      rm -f "$HOME/.chrome-beta-live-profile/SingletonLock" \
-            "$HOME/.chrome-beta-live-profile/SingletonSocket" \
-            "$HOME/.chrome-beta-live-profile/SingletonCookie"
-    fi
+아래 명령은 **별도 도구 호출**로 실행한다. 종료 코드가 0이면 Chrome을 새로 실행하거나 프로필 잠금파일을
+건드리지 말고 곧바로 4단계로 간다. 실패할 때만 3단계를 실행한다.
+
+```bash
+curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1
+```
+
+### 3) CDP가 없을 때만 Chrome Beta 실행
+
+실행 전 상태 확인은 읽기 전용으로 한다. `SingletonLock`, `SingletonSocket`, `SingletonCookie`는 Chrome의
+프로필 동시 사용을 막는 보호장치이므로 **자동 삭제하거나 이동하지 않는다**.
+
+```bash
+pgrep -fl "Google Chrome Beta" || true
+for lock_name in SingletonLock SingletonSocket SingletonCookie; do
+  lock_path="$HOME/.chrome-beta-live-profile/$lock_name"
+  if [ -L "$lock_path" ]; then
+    printf '%s -> %s\n' "$lock_path" "$(readlink "$lock_path" 2>/dev/null || true)"
+  elif [ -e "$lock_path" ]; then
+    printf '%s exists\n' "$lock_path"
   fi
+done
+```
 
-  /usr/bin/open -na "Google Chrome Beta" --args \
-    --remote-debugging-port=9222 \
-    "--remote-allow-origins=*" \
-    "--user-data-dir=$HOME/.chrome-beta-live-profile" \
-    --no-first-run \
-    --no-default-browser-check
+그다음 GUI 앱으로 실행하고 CDP가 깨어날 때까지 확인한다.
 
-  # CDP 깨어날 때까지 폴링 (최대 10초)
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    if curl -s --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then break; fi
-    sleep 1
-  done
+```bash
+echo "🚀 Chrome Beta 실행 중..."
+/usr/bin/open -na "Google Chrome Beta" --args \
+  --remote-debugging-port=9222 \
+  "--remote-allow-origins=*" \
+  "--user-data-dir=$HOME/.chrome-beta-live-profile" \
+  --no-first-run \
+  --no-default-browser-check
+
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+if ! curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+  echo "Chrome Beta CDP가 10초 안에 열리지 않았습니다." >&2
+  exit 1
 fi
+```
 
-# 3) 반드시 Beta CDP에 붙는지 확인
+Chrome 실행이 실패하더라도 잠금파일을 자동 정리하지 않는다. 프로세스와 잠금 링크 상태를 보고하고,
+사용자에게 Chrome Beta 종료 또는 복구 작업 진행 여부를 확인한다.
+
+### 4) 반드시 Beta CDP에 붙는지 확인
+
+```bash
 agent-browser --cdp 9222 tab list
 ```
 
@@ -158,23 +186,13 @@ fi
 
 ## 마무리
 
-작업을 정상 완료하고 결과를 확인한 뒤에는 사용한 Chrome Beta CDP 브라우저를 **자동 종료**한다.
-사용자에게 결과를 텍스트로 요약 보고할 때 브라우저 종료 여부도 함께 포함한다.
+작업 완료 또는 확인 완료 후 결과를 사용자에게 텍스트로 요약 보고하고, Chrome Beta를 닫는다. 다음 명령으로 macOS 앱 종료를 먼저 시도한 뒤 CDP 포트가 살아 있으면 프로세스 종료로 보강한다:
 
 ```bash
-pkill -f "Google Chrome Beta.*--remote-debugging-port=9222" || true
-```
-
-단, 로그인/2차 인증/캡차/사용자 확인 대기처럼 작업이 아직 완료되지 않은 상태에서는 닫지 않는다.
-사용자가 후속 확인을 마친 뒤 이어서 작업할 수 있도록 Chrome Beta를 유지한다.
-
-종료 확인이 필요하면:
-
-```bash
-if curl -s --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-  echo "Chrome Beta CDP still running"
-else
-  echo "Chrome Beta CDP closed"
+osascript -e 'tell application "Google Chrome Beta" to quit' || true
+sleep 2
+if pgrep -x "Google Chrome Beta" >/dev/null || curl -s --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+  pkill -x "Google Chrome Beta" || true
 fi
 ```
 
@@ -196,7 +214,7 @@ fi
 
 ## 핵심 규칙 (요약)
 
-1. 부트스트랩 블록을 매번 실행 (이미 떠 있으면 빠르게 통과).
+1. CDP를 별도 읽기 전용 명령으로 먼저 확인하고, 없을 때만 Chrome Beta를 실행한다.
 2. 탭은 AI가 자동 선택, 단 선택 직후 `eval document.title`로 확인.
 3. 모든 `agent-browser` 명령은 `--cdp 9222`를 붙여 Chrome Beta에 직접 실행.
 4. 조회는 eval 우선, 클릭/입력은 ref(snapshot) 우선.
@@ -205,8 +223,9 @@ fi
 7. ref는 DOM 바뀌면 무효 → 재 snapshot.
 8. iframe → playwright-cli, Flutter → API 직접 호출 검토.
 9. screenshot + 이미지 Read 금지(토큰 폭발). 텍스트는 `body.innerText.substring`으로 추출.
-10. 정상 완료 후 Chrome Beta CDP 브라우저 자동 종료.
+10. 작업/확인 끝나면 Chrome Beta를 닫음.
 11. 결제/탈퇴/삭제 직전만 확인.
+12. Chrome 프로필의 `Singleton*` 잠금파일을 자동 삭제하거나 이동하지 않는다.
 
 ## 참조 문서
 
