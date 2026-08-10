@@ -12,7 +12,7 @@
       }
     },
     "linkedin-talent-search": {
-      "description": "채용공고나 원하는 인재상을 LinkedIn Sales Navigator 검색조건으로 변환하고, 현재 계정에서 접근 가능한 전체 결과를 기본 범위로 페이지별 수집·중복 제거·근거 기반 평가·내보내기한다. 한국어 트리거: 채용공고에 맞는 인재 찾아줘, 원하는 인재상으로 링크드인 검색해줘, 후보를 전부 가져와, 링크드인 인재 추천해줘.",
+      "description": "LinkedIn Sales Navigator의 All filters 스키마를 브라우저 프로필별로 초기화·캐시하고 검증된 검색 URL을 조립한다. 채용공고나 원하는 인재상을 검색조건으로 변환해 접근 가능한 전체 결과를 기본 범위로 수집·중복 제거·근거 기반 평가·내보내기한다. 한국어 트리거: linkedin-talent-search init/status/refresh/reset, 채용공고에 맞는 인재 찾아줘, 원하는 인재상으로 링크드인 검색해줘, 후보를 전부 가져와.",
       "targets": {
         "codex": {
           "source": "catalog/skills/linkedin-talent-search"

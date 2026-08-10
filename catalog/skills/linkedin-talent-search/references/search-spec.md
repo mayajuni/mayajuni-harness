@@ -1,6 +1,6 @@
 # SearchSpec
 
-Create the intent portion before opening LinkedIn, then finalize UI mapping only after inspecting the live filter surface. Preserve the user's language in `source_request`; normalize values only when a current UI control requires it.
+Create the intent portion before opening LinkedIn, then finalize UI mapping from the profile-scoped filter schema initialized from the live surface. Preserve the user's language in `source_request`; normalize values only when a confirmed current control requires it.
 
 ## Schema
 
@@ -49,12 +49,18 @@ Do not put guessed UI control names in this file. Write live mappings to `filter
 
 ## Live FilterPlan
 
-After opening the current Sales Navigator people-search page, capture its actual keyword control and filter labels. Then write:
+After loading the initialized filter schema, write:
 
 ```json
 {
   "observed_at": "2026-08-05T14:00:00+09:00",
   "page_url": "https://www.linkedin.com/sales/search/people...",
+  "filter_schema": {
+    "fingerprint": "sha256 fingerprint",
+    "cache_hit": true,
+    "url_verified": true,
+    "resolved_values": []
+  },
   "inventory": {
     "keyword_controls": ["Search keywords"],
     "filter_controls": ["Function", "Current job title", "Geography", "Profile language"]
@@ -87,14 +93,14 @@ After opening the current Sales Navigator people-search page, capture its actual
 
 ### Mapping rules
 
-- Use only control labels observed on the current screen in `observed_control`.
-- Inventory the full set of visible filter labels once, then expand only controls relevant to the request.
+- Use only control labels recorded by the current profile-scoped schema in `observed_control`.
+- Inventory the full live filter surface during `init` or `refresh`; on a normal cache hit, expand only controls needed for missing values or failed verification.
 - Do not mark a requirement `ranking_only` or `unsupported` before checking both the relevant structured filters and the global keyword control.
 - Prefer exact role controls such as `Current job title` over broad functions. Use a function filter alone only when the title control cannot represent the request or when deliberately running a broad recall pass.
 - Apply all must-have conditions that the live UI can express reliably.
 - Put an expressible nice-to-have in a secondary search when applying it to the primary search would exclude otherwise qualified candidates.
 - Map every requirement exactly once at planning time. If one requirement needs both a filter and later verification, record the filter in a search plan and the verification limitation in `ambiguous` or `ranking_only`.
-- After each application, append the observed chip/value, query-state evidence, and result estimate to `applied`.
+- After each application, append the observed chip/value, query-state evidence, URL verification result, and result estimate to `applied`.
 
 ## Filter mapping order
 

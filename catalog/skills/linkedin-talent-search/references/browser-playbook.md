@@ -16,8 +16,8 @@ Use compact interactive snapshots for controls. Use targeted DOM reads for repea
 
 ## Fast interaction rules
 
-- Capture one untruncated compact snapshot for the initial live filter inventory. Afterward, use targeted snapshots or `diff snapshot`; do not repeatedly dump the full page.
-- Do not pipe the initial filter inventory through `head`. Missing a later filter such as Current job title or Keywords invalidates the FilterPlan.
+- During `init` or `refresh`, capture one untruncated compact snapshot for the full live filter inventory. During a cache-hit search, construct and verify the URL without reopening every filter.
+- Do not pipe an `init` or `refresh` inventory through `head`. Missing a later filter such as Current job title or Keywords invalidates the cached schema.
 - Use `agent batch --bail` when refs are already known and the steps do not require an intermediate LLM decision.
 - Prefer `wait --fn`, `wait --text`, `wait <selector>`, or `wait --load` over fixed multi-second sleeps.
 - When no observable condition exists, start with 500–800 ms and increase only if the visible state did not change. Do not default every action to 2500–4000 ms.
@@ -40,7 +40,21 @@ For each result page:
 5. Continue until the visible list no longer advances and the page range/card count is stable.
 6. Scroll to the page navigation area and verify the current page number before using Next.
 
-If the visible set changes without increasing the accumulator, inspect whether the identity selector is wrong before continuing.
+If a page reports results but the first extraction returns zero cards, do not mark it empty after a few fixed polls. Wait explicitly for a result-card identity, retry the targeted extraction, and record the failure if cards remain unavailable. If the visible set changes without increasing the accumulator, inspect whether the identity selector is wrong before continuing.
+
+## Direct page navigation
+
+When the verified search URL is available, prefer constructing `page=N` with `filter-schema.mjs build-url` over rediscovering and clicking pagination controls on every page.
+
+For a direct page transition:
+
+1. Build the same verified filter plan with the next page number.
+2. Navigate in the same owned task tab.
+3. Wait for both the expected page label and a changed visible candidate identity set.
+4. Confirm the filter query state still matches the plan.
+5. Traverse the virtualized list and checkpoint normally.
+
+Direct navigation is an interaction optimization, not terminal proof. Fall back to the visible Next control when a direct page is rejected or normalized to a different page. Do not request multiple LinkedIn result pages in parallel.
 
 ## Candidate fields
 
@@ -100,8 +114,8 @@ Displayed totals can be approximate or capped. A mismatch between displayed tota
 On resume:
 
 1. Load the SearchSpec and run log.
-2. Re-establish the same filters and verify them visibly.
-3. Navigate to the last completed page if the UI permits.
+2. Rebuild the same filters from the recorded schema fingerprint and verify them visibly.
+3. Navigate directly to the last completed page when the current URL strategy supports it; otherwise use the UI.
 4. Re-read the boundary page and deduplicate against existing identities.
 5. Continue from the first uncompleted page.
 

@@ -25,6 +25,12 @@ Recommended `run-log.json` shape:
   "last_completed_page": 15,
   "terminal_page_observed": false,
   "stop_reason": "security_verification_detected",
+  "filter_schema": {
+    "fingerprint": "sha256 fingerprint",
+    "cache_hit": true,
+    "missing_values_resolved": [],
+    "url_verified": true
+  },
   "browser": {
     "task_id": "20260805T101500+0900-example",
     "owned_tab": true,

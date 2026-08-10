@@ -285,12 +285,22 @@ test("linkedin-talent-search installs the shared Codex and Claude payload", asyn
       );
       assert.ok(
         fs.existsSync(
+          path.join(skillDir, "scripts", "filter-schema.mjs"),
+        ),
+      );
+      assert.ok(
+        fs.existsSync(
           path.join(skillDir, "references", "result-contract.md"),
+        ),
+      );
+      assert.ok(
+        fs.existsSync(
+          path.join(skillDir, "references", "filter-schema.md"),
         ),
       );
       assert.match(
         fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"),
-        /Inspect the live filter surface and build a FilterPlan/,
+        /Resolve the filter-schema state/,
       );
       assert.match(
         fs.readFileSync(
@@ -308,6 +318,14 @@ test("linkedin-talent-search installs the shared Codex and Claude payload", asyn
       assert.match(stdout, /LinkedIn Talent Search browser runtime/);
       assert.match(stdout, /default: 0\.33\.2/);
       assert.match(stdout, /CLOSE_ON_COMPLETE \(tab\|none, default: tab\)/);
+
+      const { stdout: filterHelp } = await execFileAsync(
+        process.execPath,
+        [path.join(skillDir, "scripts", "filter-schema.mjs"), "--help"],
+        { env },
+      );
+      assert.match(filterHelp, /filter schema cache/);
+      assert.match(filterHelp, /build-url/);
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
