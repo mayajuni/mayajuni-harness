@@ -157,28 +157,40 @@ Do not bypass security challenges, alter browser fingerprints, delete profile lo
 
 Report what was completed, what was not completed, and any user action still required.
 
-Keep the fixed-profile browser process open so its login session remains available. After successful completion, close only a tab created through `task-tab open`:
-
-```bash
-node <skill-directory>/scripts/browser-runtime.mjs task-tab finish <task-id> complete
-```
-
-For partial, blocked, failed, user-intervention, CAPTCHA, login, or resumable work, finish with the actual non-complete status. The runtime retains the owned tab:
+For partial, blocked, failed, user-intervention, CAPTCHA, login, or resumable work, retain the task tab and browser so the user can continue:
 
 ```bash
 node <skill-directory>/scripts/browser-runtime.mjs task-tab finish <task-id> partial
 node <skill-directory>/scripts/browser-runtime.mjs task-tab finish <task-id> blocked
 ```
 
-If the user asks to keep the task tab open after success, add `--keep`. A reused existing tab has no ownership state, so `finish` closes nothing. Do not run `osascript ... quit`, `pkill -x`, or `close --all`; those can close unrelated browser windows or sessions.
+After successful completion, close the tab created through `task-tab open` unless the user asks to keep it:
 
-Only when the user explicitly asks to close the live browser, close the browser attached to this skill's CDP endpoint:
+```bash
+node <skill-directory>/scripts/browser-runtime.mjs task-tab finish <task-id> complete
+```
+
+Then inspect all remaining tabs:
+
+```bash
+node <skill-directory>/scripts/browser-runtime.mjs agent tab list
+```
+
+Treat only `about:blank`, `chrome://newtab/`, `chrome://new-tab-page/`, and equivalent browser-created new-tab pages with no user content as disposable empty tabs. Apply this cleanup after a successful task:
+
+- If meaningful pages remain, close each empty/new tab individually with `agent tab close <tab-id>` and keep Chrome Beta running.
+- If only empty/new tabs remain, close the browser attached to this skill's CDP endpoint with `agent close`.
+- Never close a meaningful reused or manually opened tab merely because it was unrelated to the task.
+
+If the user asks to keep the task tab open after success, add `--keep` and skip automatic empty-tab/browser cleanup unless they separately request it. A reused existing tab has no ownership state, so `finish` closes nothing; still perform the conditional empty-tab cleanup after success.
+
+Use only the wrapper's scoped browser-close command:
 
 ```bash
 node <skill-directory>/scripts/browser-runtime.mjs agent close
 ```
 
-The runtime refuses `close --all`.
+Do not run `osascript ... quit`, `pkill -x`, or `close --all`; those can close unrelated browser windows or sessions. The runtime refuses `close --all`.
 
 ## Core Rules
 
@@ -190,5 +202,5 @@ The runtime refuses `close --all`.
 6. Let the user handle login, 2FA, CAPTCHA, and identity checks.
 7. Pause before sensitive, irreversible, or externally sent actions.
 8. Never delete Chrome profile locks or use a temporary browser fallback.
-9. On `complete`, close only a task-owned tab; retain reused tabs and all non-complete task tabs.
-10. Never close unrelated browser sessions.
+9. On `complete`, close the task-owned tab, clean up disposable empty tabs, and close the scoped browser only when no meaningful tabs remain.
+10. Retain reused tabs and all non-complete task tabs; never close meaningful unrelated tabs or unrelated browser sessions.
